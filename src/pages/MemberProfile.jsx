@@ -17,7 +17,15 @@ export default function MemberProfile() {
   const [editName, setEditName] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const isLocalId = typeof id === 'string' && id.startsWith('local-')
+  const localName = isLocalId ? id.replace('local-', '') : null
+
   useEffect(() => {
+    if (isLocalId) {
+      setMember({ id, name: localName, bio: '', avatar_url: null })
+      setLoading(false)
+      return
+    }
     fetchMember()
   }, [id])
 
@@ -123,7 +131,11 @@ export default function MemberProfile() {
           {member.name}
         </h2>
 
-        {editing ? (
+        {isLocalId ? (
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.7, marginBottom: 10 }}>
+            暂未收录到数据库
+          </p>
+        ) : editing ? (
           <div>
             <label htmlFor="edit-member-name" className="sr-only">姓名</label>
             <input

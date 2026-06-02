@@ -1,25 +1,40 @@
+import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { User } from '@phosphor-icons/react'
 import { getMemberImage } from '../memberImages'
+
+const LOCAL_PROFILES = new Set(['丁老师', '王静怡'])
+const DRAG_THRESHOLD = 5
 
 export default function MemberCard({ member, style, onPointerDown }) {
   const navigate = useNavigate()
   const localImage = getMemberImage(member.name)
   const avatarSrc = localImage || member.avatar_url
   const isLocal = typeof member.id === 'string' && member.id.startsWith('local-')
+  const hasProfile = !isLocal || LOCAL_PROFILES.has(member.name)
+  const startRef = useRef({ x: 0, y: 0 })
+  const movedRef = useRef(false)
 
-  const handleClick = () => {
-    if (!isLocal) navigate(`/member/${member.id}`)
+  const handlePointerDown = (e) => {
+    startRef.current = { x: e.clientX, y: e.clientY }
+    movedRef.current = false
+    onPointerDown(e)
+  }
+
+  const handleClick = (e) => {
+    if (movedRef.current) return
+    if (hasProfile) navigate(`/member/${member.id}`)
   }
 
   return (
     <div
-      onPointerDown={onPointerDown}
+      onPointerDown={handlePointerDown}
+      onPointerMove={() => { movedRef.current = true }}
       onClick={handleClick}
       role="button"
-      tabIndex={isLocal ? -1 : 0}
-      aria-label={isLocal ? member.name : `查看${member.name}的资料`}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
+      tabIndex={hasProfile ? 0 : -1}
+      aria-label={hasProfile ? `查看${member.name}的资料` : member.name}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (hasProfile) navigate(`/member/${member.id}`) } }}
       style={{
         position: 'absolute',
         width: 75,

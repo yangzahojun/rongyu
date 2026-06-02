@@ -45,10 +45,10 @@ export default function HomePage() {
       const dbNames = new Set(m.map((x) => x.name))
       const extras = Object.keys(memberImages)
         .filter((name) => !dbNames.has(name))
-        .map((name, i) => ({ id: `local-${i}`, name, bio: '', avatar_url: null }))
+        .map((name) => ({ id: `local-${name}`, name, bio: '', avatar_url: null }))
       merged = [...m, ...extras]
     } else {
-      merged = Object.keys(memberImages).map((name, i) => ({ id: `local-${i}`, name, bio: '', avatar_url: null }))
+      merged = Object.keys(memberImages).map((name) => ({ id: `local-${name}`, name, bio: '', avatar_url: null }))
     }
     setMembers(merged)
     setPositions(savedPos || calcGridPositions(merged))
