@@ -2,9 +2,10 @@ import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { User } from '@phosphor-icons/react'
 import { getMemberImage } from '../memberImages'
+import { loadOutfit } from '../outfitUtils'
+import AccessoryRenderer from './AccessoryRenderer'
 
 const LOCAL_PROFILES = new Set(['丁老师', '王静怡'])
-const DRAG_THRESHOLD = 5
 
 export default function MemberCard({ member, style, onPointerDown }) {
   const navigate = useNavigate()
@@ -12,19 +13,21 @@ export default function MemberCard({ member, style, onPointerDown }) {
   const avatarSrc = localImage || member.avatar_url
   const isLocal = typeof member.id === 'string' && member.id.startsWith('local-')
   const hasProfile = !isLocal || LOCAL_PROFILES.has(member.name)
-  const startRef = useRef({ x: 0, y: 0 })
   const movedRef = useRef(false)
+  const outfit = loadOutfit(member.name)
 
   const handlePointerDown = (e) => {
-    startRef.current = { x: e.clientX, y: e.clientY }
     movedRef.current = false
     onPointerDown(e)
   }
 
-  const handleClick = (e) => {
+  const handleClick = () => {
     if (movedRef.current) return
     if (hasProfile) navigate(`/member/${member.id}`)
   }
+
+  const charW = 75
+  const charH = charW * (4/3)
 
   return (
     <div
@@ -37,7 +40,7 @@ export default function MemberCard({ member, style, onPointerDown }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (hasProfile) navigate(`/member/${member.id}`) } }}
       style={{
         position: 'absolute',
-        width: 75,
+        width: charW,
         textAlign: 'center',
         display: 'flex',
         flexDirection: 'column',
@@ -48,11 +51,9 @@ export default function MemberCard({ member, style, onPointerDown }) {
       }}
     >
       <div style={{
-        width: '100%',
-        aspectRatio: '3/4',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: charW,
+        height: charH,
+        position: 'relative',
         overflow: 'hidden',
         pointerEvents: 'none',
       }}>
@@ -62,21 +63,23 @@ export default function MemberCard({ member, style, onPointerDown }) {
             alt={member.name}
             draggable={false}
             style={{
-              width: '100%',
-              height: '100%',
+              width: '100%', height: '100%',
               objectFit: 'contain',
               objectPosition: 'bottom center',
+              position: 'relative', zIndex: 1,
             }}
           />
         ) : (
           <div style={{
-            width: 52, height: 52, borderRadius: '50%',
+            width: 52, height: 52, borderRadius: '50%', position: 'absolute',
+            top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
             background: 'linear-gradient(135deg, var(--color-brand-primary), var(--color-brand-subtle))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1,
           }}>
             <User size={24} color="#FFF" />
           </div>
         )}
+        <AccessoryRenderer items={outfit} width={charW} height={charH} />
       </div>
       <div style={{ fontSize: 11, fontWeight: 500, marginTop: 2, pointerEvents: 'none' }}>
         {member.name}

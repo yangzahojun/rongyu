@@ -1,84 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt } from '@phosphor-icons/react'
+import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus } from '@phosphor-icons/react'
 import DiaryCard from '../components/DiaryCard'
 import { getMemberImage } from '../memberImages'
+import { ACCESSORY_LIST, loadOutfit, saveOutfit } from '../outfitUtils'
 
-const ACCESSORIES = {
-  head: { label: '头饰', items: [
-    { e: '', n: '无' },
-    { e: '👑', n: '皇冠' },
-    { e: '🎓', n: '学士帽' },
-    { e: '🎩', n: '礼帽' },
-    { e: '🤠', n: '牛仔帽' },
-    { e: '🎀', n: '蝴蝶结' },
-    { e: '🌸', n: '花朵' },
-    { e: '⭐', n: '星星' },
-    { e: '🐰', n: '兔耳' },
-    { e: '🐱', n: '猫耳' },
-    { e: '🎧', n: '耳机' },
-  ]},
-  eyes: { label: '眼镜', items: [
-    { e: '', n: '无' },
-    { e: '👓', n: '圆框镜' },
-    { e: '🕶️', n: '墨镜' },
-    { e: '🤓', n: '学霸镜' },
-    { e: '🥽', n: '护目镜' },
-  ]},
-  face: { label: '面部', items: [
-    { e: '', n: '无' },
-    { e: '😷', n: '口罩' },
-    { e: '🤡', n: '红鼻' },
-    { e: '💋', n: '红唇' },
-    { e: '😊', n: '微笑' },
-  ]},
-  neck: { label: '颈部', items: [
-    { e: '', n: '无' },
-    { e: '🧣', n: '围巾' },
-    { e: '👔', n: '领带' },
-    { e: '🎗️', n: '丝带' },
-    { e: '💎', n: '钻石链' },
-  ]},
-  hand: { label: '手持', items: [
-    { e: '', n: '无' },
-    { e: '🌸', n: '花束' },
-    { e: '⭐', n: '魔法棒' },
-    { e: '🎤', n: '话筒' },
-    { e: '📚', n: '书本' },
-    { e: '⚽', n: '足球' },
-    { e: '🎸', n: '吉他' },
-    { e: '🔮', n: '水晶球' },
-    { e: '💐', n: '鲜花' },
-    { e: '🏀', n: '篮球' },
-  ]},
-  bg: { label: '背景', items: [
-    { e: '', n: '无' },
-    { e: '✨', n: '闪闪' },
-    { e: '💫', n: '星光' },
-    { e: '🌈', n: '彩虹' },
-    { e: '💖', n: '爱心' },
-    { e: '🔥', n: '火焰' },
-    { e: '🎵', n: '音符' },
-    { e: '🌺', n: '花朵' },
-  ]},
-}
-
-const CATEGORIES = Object.keys(ACCESSORIES)
-
-const DEFAULT_OUTFIT = { head: 0, eyes: 0, face: 0, neck: 0, hand: 0, bg: 0 }
-
-function loadOutfit(name) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(`rongyu_outfit_${name}`))
-    if (saved) return saved
-  } catch {}
-  return { ...DEFAULT_OUTFIT }
-}
-
-function saveOutfit(name, outfit) {
-  try { localStorage.setItem(`rongyu_outfit_${name}`, JSON.stringify(outfit)) } catch {}
-}
+const CHAR_W = 140
+const CHAR_H = 190
 
 export default function MemberProfile() {
   const { id } = useParams()
@@ -92,8 +21,11 @@ export default function MemberProfile() {
   const [editName, setEditName] = useState('')
   const [saving, setSaving] = useState(false)
   const [showDressUp, setShowDressUp] = useState(false)
-  const [outfit, setOutfit] = useState(DEFAULT_OUTFIT)
-  const [activeCat, setActiveCat] = useState('head')
+  const [outfit, setOutfit] = useState([])
+  const [selIdx, setSelIdx] = useState(null)
+  const [dragging, setDragging] = useState(false)
+  const charRef = useRef(null)
+  const dragOffRef = useRef({ x: 0, y: 0 })
 
   const isLocalId = typeof id === 'string' && id.startsWith('local-')
   const localName = isLocalId ? id.replace('local-', '') : null
@@ -147,11 +79,88 @@ export default function MemberProfile() {
     navigate('/')
   }
 
-  const handleSelectAccessory = (cat, idx) => {
-    const next = { ...outfit, [cat]: idx }
+  // --- 换装编辑器 ---
+
+  const handleAddAccessory = (emoji) => {
+    const item = { e: emoji, x: 50, y: 20, s: 1, r: 0 }
+    const next = [...outfit, item]
+    setOutfit(next)
+    saveOutfit(member.name, next)
+    setSelIdx(next.length - 1)
+  }
+
+  const handleRemoveSelected = () => {
+    if (selIdx == null) return
+    const next = outfit.filter((_, i) => i !== selIdx)
+    setOutfit(next)
+    saveOutfit(member.name, next)
+    setSelIdx(null)
+  }
+
+  const handleScale = (delta) => {
+    if (selIdx == null) return
+    const next = outfit.map((item, i) => {
+      if (i !== selIdx) return item
+      const s = Math.max(0.3, Math.min(3, item.s + delta))
+      return { ...item, s: Math.round(s * 10) / 10 }
+    })
     setOutfit(next)
     saveOutfit(member.name, next)
   }
+
+  const handleRotate = (delta) => {
+    if (selIdx == null) return
+    const next = outfit.map((item, i) => {
+      if (i !== selIdx) return item
+      const r = item.r + delta
+      return { ...item, r: Math.round(r) }
+    })
+    setOutfit(next)
+    saveOutfit(member.name, next)
+  }
+
+  const handlePointerDownItem = (e, idx) => {
+    e.stopPropagation()
+    e.preventDefault()
+    setSelIdx(idx)
+    setDragging(true)
+    const rect = charRef.current.getBoundingClientRect()
+    const item = outfit[idx]
+    dragOffRef.current = {
+      x: e.clientX - rect.left - (item.x / 100) * rect.width,
+      y: e.clientY - rect.top - (item.y / 100) * rect.height,
+    }
+  }
+
+  const handlePointerMove = useCallback((e) => {
+    if (!dragging || selIdx == null) return
+    const rect = charRef.current.getBoundingClientRect()
+    const x = ((e.clientX - dragOffRef.current.x) / rect.width) * 100
+    const y = ((e.clientY - dragOffRef.current.y) / rect.height) * 100
+    const next = outfit.map((item, i) => {
+      if (i !== selIdx) return item
+      return { ...item, x: Math.round(Math.max(0, Math.min(100, x))), y: Math.round(Math.max(0, Math.min(100, y))) }
+    })
+    setOutfit(next)
+  }, [dragging, selIdx, outfit])
+
+  const handlePointerUp = useCallback(() => {
+    if (dragging) {
+      saveOutfit(member?.name, outfit)
+      setDragging(false)
+    }
+  }, [dragging, member, outfit])
+
+  useEffect(() => {
+    if (dragging) {
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', handlePointerUp)
+      return () => {
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', handlePointerUp)
+      }
+    }
+  }, [dragging, handlePointerMove, handlePointerUp])
 
   if (loading) {
     return (
@@ -170,8 +179,7 @@ export default function MemberProfile() {
   }
 
   const avatarSrc = getMemberImage(member.name) || member.avatar_url
-  const charW = 120
-  const charH = 160
+  const selItem = selIdx != null ? outfit[selIdx] : null
 
   return (
     <div className="page-content">
@@ -188,35 +196,28 @@ export default function MemberProfile() {
       </button>
 
       <div className="card" style={{ textAlign: 'center', marginBottom: 16 }}>
-        {/* 角色展示 */}
-        <div style={{
-          width: charW, height: charH,
-          margin: '0 auto 12px',
-          position: 'relative',
-          overflow: 'visible',
-        }}>
-          {/* 背景特效 */}
-          {(outfit.bg > 0 && ACCESSORIES.bg.items[outfit.bg].e) && (
-            <div style={{
-              position: 'absolute', inset: -20,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 40, opacity: 0.5, pointerEvents: 'none',
-              animation: 'pulse 2s ease-in-out infinite',
-            }}>
-              {ACCESSORIES.bg.items[outfit.bg].e.repeat(3)}
-            </div>
-          )}
-
-          {/* 身体 */}
+        {/* 角色展示区 */}
+        <div
+          ref={charRef}
+          style={{
+            width: CHAR_W, height: CHAR_H,
+            margin: '0 auto 12px',
+            position: 'relative',
+            overflow: 'hidden',
+            touchAction: showDressUp ? 'none' : undefined,
+          }}
+        >
           {avatarSrc ? (
             <img
               src={avatarSrc}
               alt={member.name}
+              draggable={false}
               style={{
                 width: '100%', height: '100%',
                 objectFit: 'contain',
                 objectPosition: 'bottom center',
                 position: 'relative', zIndex: 1,
+                pointerEvents: 'none',
               }}
             />
           ) : (
@@ -230,61 +231,38 @@ export default function MemberProfile() {
             </div>
           )}
 
-          {/* 头饰 - top */}
-          {(outfit.head > 0 && ACCESSORIES.head.items[outfit.head].e) && (
-            <div style={{
-              position: 'absolute', top: -8, left: '50%',
-              transform: 'translateX(-50%)',
-              fontSize: 28, zIndex: 3, pointerEvents: 'none',
-              filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.2))',
-            }}>
-              {ACCESSORIES.head.items[outfit.head].e}
-            </div>
-          )}
+          {/* 配饰渲染 */}
+          {outfit.map((item, i) => {
+            const x = item.x != null ? item.x : 50
+            const y = item.y != null ? item.y : 20
+            const s = item.s != null ? item.s : 1
+            const r = item.r != null ? item.r : 0
+            const isSel = selIdx === i && showDressUp
 
-          {/* 眼镜 - face area */}
-          {(outfit.eyes > 0 && ACCESSORIES.eyes.items[outfit.eyes].e) && (
-            <div style={{
-              position: 'absolute', top: '22%', left: '50%',
-              transform: 'translateX(-50%)',
-              fontSize: 24, zIndex: 3, pointerEvents: 'none',
-            }}>
-              {ACCESSORIES.eyes.items[outfit.eyes].e}
-            </div>
-          )}
-
-          {/* 面部 */}
-          {(outfit.face > 0 && ACCESSORIES.face.items[outfit.face].e) && (
-            <div style={{
-              position: 'absolute', top: '28%', left: '50%',
-              transform: 'translateX(-50%)',
-              fontSize: 22, zIndex: 3, pointerEvents: 'none',
-            }}>
-              {ACCESSORIES.face.items[outfit.face].e}
-            </div>
-          )}
-
-          {/* 颈部 */}
-          {(outfit.neck > 0 && ACCESSORIES.neck.items[outfit.neck].e) && (
-            <div style={{
-              position: 'absolute', top: '38%', left: '50%',
-              transform: 'translateX(-50%)',
-              fontSize: 20, zIndex: 3, pointerEvents: 'none',
-            }}>
-              {ACCESSORIES.neck.items[outfit.neck].e}
-            </div>
-          )}
-
-          {/* 手持 */}
-          {(outfit.hand > 0 && ACCESSORIES.hand.items[outfit.hand].e) && (
-            <div style={{
-              position: 'absolute', top: '58%', left: '62%',
-              fontSize: 24, zIndex: 3, pointerEvents: 'none',
-              filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))',
-            }}>
-              {ACCESSORIES.hand.items[outfit.hand].e}
-            </div>
-          )}
+            return (
+              <div
+                key={i}
+                onPointerDown={(e) => {
+                  if (!showDressUp) return
+                  handlePointerDownItem(e, i)
+                }}
+                style={{
+                  position: 'absolute',
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  transform: `translate(-50%, -50%) scale(${s}) rotate(${r}deg)`,
+                  fontSize: 28,
+                  zIndex: isSel ? 5 : 2,
+                  cursor: showDressUp ? 'grab' : undefined,
+                  pointerEvents: showDressUp ? 'auto' : 'none',
+                  filter: isSel ? 'drop-shadow(0 0 6px var(--color-brand-primary)) brightness(1.2)' : undefined,
+                  userSelect: 'none',
+                }}
+              >
+                {item.e}
+              </div>
+            )
+          })}
         </div>
 
         <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
@@ -293,7 +271,7 @@ export default function MemberProfile() {
 
         {/* 换装按钮 */}
         <button
-          onClick={() => setShowDressUp(!showDressUp)}
+          onClick={() => { setShowDressUp(!showDressUp); setSelIdx(null) }}
           style={{
             fontSize: 13, padding: '6px 16px', marginBottom: 10,
             border: '1px solid var(--color-brand-primary)',
@@ -306,67 +284,64 @@ export default function MemberProfile() {
           {showDressUp ? '收起换装' : '换装'}
         </button>
 
-        {/* 换装面板 */}
+        {/* 换装编辑器 */}
         {showDressUp && (
           <div style={{
             background: 'var(--color-surface-primary)',
-            borderRadius: 12, padding: 12, marginBottom: 10,
+            borderRadius: 12, padding: 10, marginBottom: 10,
             border: '1px solid var(--color-brand-subtle)',
           }}>
-            {/* 分类标签 */}
-            <div style={{
-              display: 'flex', gap: 4, marginBottom: 10,
-              flexWrap: 'wrap', justifyContent: 'center',
-            }}>
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCat(cat)}
-                  style={{
-                    fontSize: 12, padding: '4px 10px',
-                    borderRadius: 12, border: 'none',
-                    background: activeCat === cat ? 'var(--color-brand-primary)' : 'var(--color-surface-card)',
-                    color: activeCat === cat ? '#fff' : 'var(--color-text-primary)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {ACCESSORIES[cat].label}
-                  {outfit[cat] > 0 && (
-                    <span style={{ marginLeft: 4, fontSize: 10 }}>●</span>
-                  )}
-                </button>
-              ))}
-            </div>
+            {/* 选中配饰控制栏 */}
+            {selItem && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: 6, marginBottom: 10, flexWrap: 'wrap',
+                padding: '6px 8px', background: 'var(--color-surface-card)',
+                borderRadius: 10, fontSize: 13,
+              }}>
+                <span style={{ fontSize: 20 }}>{selItem.e}</span>
+                <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>
+                  x:{selItem.x}% y:{selItem.y}%
+                </span>
+                <button onClick={() => handleScale(-0.1)} style={ctrlBtnStyle} title="缩小"><Minus size={12} /></button>
+                <span style={{ fontSize: 12, minWidth: 32, textAlign: 'center' }}>{selItem.s}x</span>
+                <button onClick={() => handleScale(0.1)} style={ctrlBtnStyle} title="放大"><Plus size={12} /></button>
+                <button onClick={() => handleRotate(-15)} style={ctrlBtnStyle} title="左转">↺</button>
+                <span style={{ fontSize: 12, minWidth: 32, textAlign: 'center' }}>{selItem.r}°</span>
+                <button onClick={() => handleRotate(15)} style={ctrlBtnStyle} title="右转">↻</button>
+                <button onClick={handleRemoveSelected} style={{ ...ctrlBtnStyle, color: '#E74C3C', borderColor: '#E74C3C' }}>删除</button>
+              </div>
+            )}
 
-            {/* 选项网格 */}
+            {selItem == null && (
+              <p style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 8 }}>
+                点击角色身上的配饰可拖动调整位置，下方选择新配饰添加
+              </p>
+            )}
+
+            {/* 配饰选择器 */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(5, 1fr)',
-              gap: 6,
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: 4,
             }}>
-              {ACCESSORIES[activeCat].items.map((item, idx) => (
+              {ACCESSORY_LIST.map((emoji) => (
                 <button
-                  key={idx}
-                  onClick={() => handleSelectAccessory(activeCat, idx)}
+                  key={emoji}
+                  onClick={() => handleAddAccessory(emoji)}
                   style={{
                     aspectRatio: '1',
                     borderRadius: 10,
-                    border: outfit[activeCat] === idx
-                      ? '2px solid var(--color-brand-primary)'
-                      : '1px solid var(--color-brand-subtle)',
-                    background: outfit[activeCat] === idx
-                      ? 'var(--color-brand-subtle)'
-                      : 'var(--color-surface-card)',
+                    border: '1px solid var(--color-brand-subtle)',
+                    background: 'var(--color-surface-card)',
                     cursor: 'pointer',
+                    fontSize: 22,
                     display: 'flex',
-                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: item.e ? 24 : 12,
-                    color: item.e ? undefined : 'var(--color-text-secondary)',
                   }}
                 >
-                  {item.e || '✕'}
+                  {emoji}
                 </button>
               ))}
             </div>
@@ -380,30 +355,12 @@ export default function MemberProfile() {
         ) : editing ? (
           <div>
             <label htmlFor="edit-member-name" className="sr-only">姓名</label>
-            <input
-              id="edit-member-name"
-              className="input"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="姓名"
-              style={{ marginBottom: 8, textAlign: 'center', fontSize: 15, fontWeight: 600 }}
-            />
+            <input id="edit-member-name" className="input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="姓名" style={{ marginBottom: 8, textAlign: 'center', fontSize: 15, fontWeight: 600 }} />
             <label htmlFor="edit-member-bio" className="sr-only">自我介绍</label>
-            <textarea
-              id="edit-member-bio"
-              className="input"
-              value={editBio}
-              onChange={(e) => setEditBio(e.target.value)}
-              placeholder="写一段自我介绍..."
-              style={{ marginBottom: 10, minHeight: 80, textAlign: 'left' }}
-            />
+            <textarea id="edit-member-bio" className="input" value={editBio} onChange={(e) => setEditBio(e.target.value)} placeholder="写一段自我介绍..." style={{ marginBottom: 10, minHeight: 80, textAlign: 'left' }} />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-              <button className="btn-primary" onClick={handleSaveBio} disabled={saving} style={{ fontSize: 13, padding: '6px 18px' }}>
-                {saving ? '保存中...' : '保存'}
-              </button>
-              <button className="btn-outline" onClick={() => { setEditing(false); setEditBio(member.bio || ''); setEditName(member.name) }} style={{ fontSize: 13, padding: '6px 18px' }}>
-                取消
-              </button>
+              <button className="btn-primary" onClick={handleSaveBio} disabled={saving} style={{ fontSize: 13, padding: '6px 18px' }}>{saving ? '保存中...' : '保存'}</button>
+              <button className="btn-outline" onClick={() => { setEditing(false); setEditBio(member.bio || ''); setEditName(member.name) }} style={{ fontSize: 13, padding: '6px 18px' }}>取消</button>
             </div>
           </div>
         ) : (
@@ -433,11 +390,7 @@ export default function MemberProfile() {
         ) : (
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {courses.map((c) => (
-              <div key={c.id} style={{
-                display: 'flex', justifyContent: 'space-between',
-                padding: '6px 0', borderBottom: '1px solid var(--color-brand-subtle)',
-                fontSize: 13,
-              }}>
+              <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--color-brand-subtle)', fontSize: 13 }}>
                 <span>{c.course_date}</span>
                 <span style={{ fontWeight: 500 }}>{c.course_name}</span>
                 <span style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>{c.classes?.name}</span>
@@ -460,17 +413,21 @@ export default function MemberProfile() {
           <DiaryCard
             key={diary.id}
             diary={diary}
-            onEdit={async (id, newText) => {
-              await supabase.from('diaries').update({ content_text: newText }).eq('id', id)
-              fetchMember()
-            }}
-            onDelete={async (id) => {
-              await supabase.from('diaries').delete().eq('id', id)
-              fetchMember()
-            }}
+            onEdit={async (dId, newText) => { await supabase.from('diaries').update({ content_text: newText }).eq('id', dId); fetchMember() }}
+            onDelete={async (dId) => { await supabase.from('diaries').delete().eq('id', dId); fetchMember() }}
           />
         ))
       )}
     </div>
   )
+}
+
+const ctrlBtnStyle = {
+  width: 28, height: 28, borderRadius: 6,
+  border: '1px solid var(--color-brand-subtle)',
+  background: 'var(--color-surface-primary)',
+  cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontSize: 11,
+  color: 'var(--color-text-primary)',
 }
