@@ -130,60 +130,64 @@ export default function MemberProfile() {
     }
   }
 
-  // --- 拖动 ---
+  // --- 拖动（完全零state，零重渲染） ---
+  // --- 拖动（window级事件，元素级pointerdown，零state重渲染） ---
   const onPointerDown = useCallback((e) => {
-    const el = e.target.closest('[data-acc]')
-    if (!el) {
-      clearHighlight()
-      setSelIdx(null)
-      selRef.current = null
-      return
-    }
     e.preventDefault()
+    e.stopPropagation()
+    const el = e.currentTarget
     const idx = Number(el.dataset.acc)
-    selRef.current = idx
-    setSelIdx(idx)
-    highlightEl(el)
 
+    selRef.current = idx
     dragIdx.current = idx
     dragEl.current = el
     el.setPointerCapture(e.pointerId)
     el.style.cursor = 'grabbing'
+    highlightEl(el)
 
     const rect = charRef.current.getBoundingClientRect()
     const item = outfitRef.current[idx]
     dragOff.current = {
-      x: e.clientX - rect.left - (item.x / 100) * rect.width,
-      y: e.clientY - rect.top - (item.y / 100) * rect.height,
+      x: e.clientX - rect.left - ((item.x ?? 50) / 100) * rect.width,
+      y: e.clientY - rect.top - ((item.y ?? 20) / 100) * rect.height,
     }
   }, [])
 
   const onPointerMove = useCallback((e) => {
     if (dragIdx.current == null) return
     e.preventDefault()
+    const el = e.currentTarget
     const rect = charRef.current.getBoundingClientRect()
     const x = Math.round(((e.clientX - dragOff.current.x) / rect.width) * 100)
     const y = Math.round(((e.clientY - dragOff.current.y) / rect.height) * 100)
-    if (dragEl.current) {
-      dragEl.current.style.left = `${x}%`
-      dragEl.current.style.top = `${y}%`
-    }
+    el.style.left = `${x}%`
+    el.style.top = `${y}%`
     outfitRef.current = outfitRef.current.map((it, i) =>
       i !== dragIdx.current ? it : { ...it, x, y }
     )
   }, [])
 
   const onPointerUp = useCallback((e) => {
-    if (dragIdx.current == null) return
+    const idx = dragIdx.current
+    if (idx == null) return
     e.preventDefault()
-    if (dragEl.current) {
-      dragEl.current.releasePointerCapture(e.pointerId)
-      dragEl.current.style.cursor = 'grab'
-    }
+    const el = e.currentTarget
+    el.releasePointerCapture(e.pointerId)
+    el.style.cursor = 'grab'
     saveOutfit(memberRef.current?.name, outfitRef.current)
     setOutfit([...outfitRef.current])
+    setSelIdx(idx)
     dragIdx.current = null
     dragEl.current = null
+  }, [])
+
+  // 点击空白区域取消选中
+  const onContainerClick = useCallback((e) => {
+    if (e.target === charRef.current || e.target.tagName === 'IMG') {
+      clearHighlight()
+      setSelIdx(null)
+      selRef.current = null
+    }
   }, [])
 
   useEffect(() => {
@@ -234,10 +238,7 @@ export default function MemberProfile() {
         <div style={{ display:'flex',justifyContent:'center',marginBottom:12 }}>
           <div
             ref={charRef}
-            onPointerDown={showDressUp ? onPointerDown : undefined}
-            onPointerMove={showDressUp ? onPointerMove : undefined}
-            onPointerUp={showDressUp ? onPointerUp : undefined}
-            onLostPointerCapture={showDressUp ? onPointerUp : undefined}
+            onClick={showDressUp ? onContainerClick : undefined}
             style={{
               width: scaledW, height: scaledH,
               position: 'relative', overflow: 'visible',
@@ -267,16 +268,22 @@ export default function MemberProfile() {
               const l = item.cl ?? 0
               const hasClip = t > 0 || r > 0 || b > 0 || l > 0
               return (
-                <div key={i} data-acc={i} style={{
-                  position:'absolute', left:`${x}%`, top:`${y}%`,
-                  transform:`translate(-50%,-50%) scale(${sv}) rotate(${rv}deg)`,
-                  fontSize: editorFont, zIndex:2, opacity:ov,
-                  cursor: showDressUp ? 'grab' : undefined,
-                  pointerEvents: showDressUp ? 'auto' : 'none',
-                  userSelect:'none', touchAction:'none',
-                  clipPath: hasClip ? `inset(${t}% ${r}% ${b}% ${l}%)` : undefined,
-                  overflow: hasClip ? 'hidden' : undefined,
-                }}>{item.e}</div>
+                <div
+                  key={i} data-acc={i}
+                  onPointerDown={showDressUp ? onPointerDown : undefined}
+                  onPointerMove={showDressUp ? onPointerMove : undefined}
+                  onPointerUp={showDressUp ? onPointerUp : undefined}
+                  onLostPointerCapture={showDressUp ? onPointerUp : undefined}
+                  style={{
+                    position:'absolute', left:`${x}%`, top:`${y}%`,
+                    transform:`translate(-50%,-50%) scale(${sv}) rotate(${rv}deg)`,
+                    fontSize: editorFont, zIndex:2, opacity:ov,
+                    cursor: showDressUp ? 'grab' : undefined,
+                    pointerEvents: showDressUp ? 'auto' : 'none',
+                    userSelect:'none', touchAction:'none',
+                    clipPath: hasClip ? `inset(${t}% ${r}% ${b}% ${l}%)` : undefined,
+                    overflow: hasClip ? 'hidden' : undefined,
+                  }}>{item.e}</div>
               )
             })}
           </div>
