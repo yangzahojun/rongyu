@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus } from '@phosphor-icons/react'
 import DiaryCard from '../components/DiaryCard'
 import { getMemberImage } from '../memberImages'
-import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit, ACC_FONT_RATIO } from '../outfitUtils'
+import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit, ACC_FONT_RATIO, loadCanvasState, saveCanvasState, DEFAULT_MEMBER_SIZE } from '../outfitUtils'
 
 const CHAR_W = 140
 const CHAR_H = 190
@@ -25,6 +25,7 @@ export default function MemberProfile() {
   const [outfit, setOutfit] = useState([])
   const [selIdx, setSelIdx] = useState(null)
   const [charZoom, setCharZoom] = useState(1)
+  const charZoomRef = useRef(1)
 
   // Refs - 所有可变操作走ref，不走state（避免闭包和重渲染问题）
   const charRef = useRef(null)
@@ -39,6 +40,7 @@ export default function MemberProfile() {
   useEffect(() => { outfitRef.current = outfit }, [outfit])
   useEffect(() => { selRef.current = selIdx }, [selIdx])
   useEffect(() => { memberRef.current = member }, [member])
+  useEffect(() => { charZoomRef.current = charZoom }, [charZoom])
 
   const isLocalId = typeof id === 'string' && id.startsWith('local-')
   const localName = isLocalId ? id.replace('local-', '') : null
@@ -47,6 +49,12 @@ export default function MemberProfile() {
     if (isLocalId) {
       setMember({ id, name: localName, bio: '', avatar_url: null })
       setOutfit(loadOutfit(localName))
+      // 读取已保存的缩放
+      const canvas = loadCanvasState()
+      const savedSize = (canvas.sizes && canvas.sizes[localName]) || DEFAULT_MEMBER_SIZE
+      const z = Math.round(savedSize / DEFAULT_MEMBER_SIZE * 10) / 10
+      setCharZoom(z)
+      charZoomRef.current = z
       setLoading(false)
       return
     }
@@ -59,6 +67,12 @@ export default function MemberProfile() {
       if (data) {
         setMember(data)
         setOutfit(loadOutfit(data.name))
+        // 读取已保存的人物缩放
+        const canvas = loadCanvasState()
+        const savedSize = (canvas.sizes && canvas.sizes[data.name]) || DEFAULT_MEMBER_SIZE
+        const z = Math.round(savedSize / DEFAULT_MEMBER_SIZE * 10) / 10
+        setCharZoom(z)
+        charZoomRef.current = z
         setEditBio(data.bio || '')
         try { const r = await supabase.from('courses').select('*, classes(name)').eq('teacher_name', data.name).order('course_date', { ascending: true }); if (r.data) setCourses(r.data) } catch {}
         try { const r = await supabase.from('diaries').select('*').eq('author_name', data.name).order('created_at', { ascending: false }); if (r.data) setDiaries(r.data) } catch {}
@@ -76,6 +90,15 @@ export default function MemberProfile() {
   const handleDeleteMember = async () => {
     if (!confirm('确定删除该成员吗？')) return
     await supabase.from('members').delete().eq('id', id); navigate('/')
+  }
+
+  // 人物缩放持久化 → 同步到canvasState.sizes → 首页实时体现
+  const persistZoom = (z) => {
+    const canvas = loadCanvasState()
+    const sz = Math.round(DEFAULT_MEMBER_SIZE * z)
+    const sizes = { ...(canvas.sizes || {}), [memberRef.current?.name || '']: sz }
+    const positions = canvas.positions || {}
+    saveCanvasState({ positions, sizes })
   }
 
   // --- 换装（全部用ref，state仅用于渲染触发） ---
@@ -211,9 +234,9 @@ export default function MemberProfile() {
   }
 
   const avatarSrc = getMemberImage(member.name) || member.avatar_url
-  const editorFont = Math.round(CHAR_W * ACC_FONT_RATIO)
   const scaledW = CHAR_W * charZoom
   const scaledH = CHAR_H * charZoom
+  const editorFont = Math.round(scaledW * ACC_FONT_RATIO)
   // selItem 使用 selIdx 和 outfit（都在同一个渲染周期内稳定）
   const localSelItem = selIdx != null ? outfit[selIdx] : null
 
@@ -228,9 +251,9 @@ export default function MemberProfile() {
         {showDressUp && (
           <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:8 }}>
             <span style={{ fontSize:11,color:'var(--color-text-secondary)' }}>人物缩放</span>
-            <button onClick={()=>setCharZoom(z=>Math.round(Math.max(0.5,Math.min(2,z-0.1))*10)/10)} style={css.btn}><Minus size={12}/></button>
+            <button onClick={()=>{ const z = Math.round(Math.max(0.5,Math.min(2,charZoomRef.current-0.1))*10)/10; setCharZoom(z); persistZoom(z) }} style={css.btn}><Minus size={12}/></button>
             <span style={{ fontSize:12,minWidth:36,textAlign:'center' }}>{Math.round(charZoom*100)}%</span>
-            <button onClick={()=>setCharZoom(z=>Math.round(Math.min(2,z+0.1)*10)/10)} style={css.btn}><Plus size={12}/></button>
+            <button onClick={()=>{ const z = Math.round(Math.min(2,charZoomRef.current+0.1)*10)/10; setCharZoom(z); persistZoom(z) }} style={css.btn}><Plus size={12}/></button>
           </div>
         )}
 
