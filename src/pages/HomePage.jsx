@@ -1,32 +1,55 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { Calendar, Users, BookOpen, PencilSimple, Image } from '@phosphor-icons/react'
 import MemberCard from '../components/MemberCard'
 import memberImages from '../memberImages'
 
+const ORDER_KEY = 'rongyu_member_order'
+
+function applyOrder(list, order) {
+  if (!order || order.length === 0) return list
+  const orderMap = new Map(order.map((name, i) => [name, i]))
+  const inOrder = list.filter((m) => orderMap.has(m.name))
+  const notInOrder = list.filter((m) => !orderMap.has(m.name))
+  inOrder.sort((a, b) => orderMap.get(a.name) - orderMap.get(b.name))
+  return [...inOrder, ...notInOrder]
+}
+
 export default function HomePage() {
   const navigate = useNavigate()
   const [members, setMembers] = useState([])
   const [recentDiaries, setRecentDiaries] = useState([])
   const [todayCourses, setTodayCourses] = useState([])
+  const [dragIndex, setDragIndex] = useState(null)
+  const dragOverRef = useRef(null)
 
   useEffect(() => {
     fetchAll()
   }, [])
 
+  const saveOrder = (list) => {
+    const names = list.map((m) => m.name)
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(names)) } catch {}
+  }
+
   const fetchAll = async () => {
+    let stored
+    try { stored = JSON.parse(localStorage.getItem(ORDER_KEY)) } catch {}
+
     const { data: m } = await supabase.from('members').select('*').order('id')
+    let merged
     if (m) {
       const dbNames = new Set(m.map((x) => x.name))
       const extras = Object.keys(memberImages)
         .filter((name) => !dbNames.has(name))
         .map((name, i) => ({ id: `local-${i}`, name, bio: '', avatar_url: null }))
-      setMembers([...m, ...extras])
+      merged = applyOrder([...m, ...extras], stored)
     } else {
       const fallback = Object.keys(memberImages).map((name, i) => ({ id: `local-${i}`, name, bio: '', avatar_url: null }))
-      setMembers(fallback)
+      merged = applyOrder(fallback, stored)
     }
+    setMembers(merged)
 
     const today = new Date().toISOString().split('T')[0]
     const { data: c } = await supabase
@@ -42,6 +65,37 @@ export default function HomePage() {
       .order('created_at', { ascending: false })
       .limit(3)
     if (d) setRecentDiaries(d)
+  }
+
+  const handleDragStart = (e, index) => {
+    setDragIndex(index)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', index.toString())
+  }
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    dragOverRef.current = index
+  }
+
+  const handleDragEnd = () => {
+    const from = dragIndex
+    const to = dragOverRef.current
+    if (from != null && to != null && from !== to) {
+      const reordered = [...members]
+      const [item] = reordered.splice(from, 1)
+      reordered.splice(to, 0, item)
+      setMembers(reordered)
+      saveOrder(reordered)
+    }
+    setDragIndex(null)
+    dragOverRef.current = null
+  }
+
+  const handleDrop = (e, index) => {
+    e.preventDefault()
+    dragOverRef.current = index
   }
 
   return (
@@ -117,6 +171,7 @@ export default function HomePage() {
           <Users size={18} weight="fill" style={{ color: 'var(--color-brand-primary)' }} />
           支教队成员 ({members.length}人)
         </h2>
+        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>长按拖动排序</span>
       </div>
 
       {/* 成员卡片网格 */}
@@ -133,15 +188,32 @@ export default function HomePage() {
           gap: 12,
           marginBottom: 16,
         }}>
-          {members.map((m) => (
-            <MemberCard key={m.id} member={m} />
+          {members.map((m, i) => (
+            <MemberCard
+              key={m.id}
+              member={m}
+              index={i}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              onDrop={handleDrop}
+              isDragging={dragIndex === i}
+            />
           ))}
         </div>
       )}
 
+      {/* 连接线 */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+      }}>
+        <div style={{ flex: 1, height: 1, background: 'var(--color-brand-subtle)' }} />
+        <BookOpen size={14} weight="fill" style={{ color: 'var(--color-brand-primary)' }} />
+        <div style={{ flex: 1, height: 1, background: 'var(--color-brand-subtle)' }} />
+      </div>
+
       {/* 最新日记 */}
       <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <BookOpen size={18} weight="fill" style={{ color: 'var(--color-brand-primary)' }} />
         最新日记
       </h2>
       {recentDiaries.length === 0 ? (

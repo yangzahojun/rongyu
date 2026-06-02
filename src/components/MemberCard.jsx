@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { User } from '@phosphor-icons/react'
 import { getMemberImage } from '../memberImages'
 
-export default function MemberCard({ member }) {
+export default function MemberCard({ member, index, onDragStart, onDragOver, onDragEnd, onDrop, isDragging }) {
   const navigate = useNavigate()
   const localImage = getMemberImage(member.name)
   const avatarSrc = localImage || member.avatar_url
@@ -14,17 +14,25 @@ export default function MemberCard({ member }) {
 
   return (
     <div
+      draggable
+      onDragStart={(e) => onDragStart(e, index)}
+      onDragOver={(e) => onDragOver(e, index)}
+      onDragEnd={onDragEnd}
+      onDrop={(e) => onDrop(e, index)}
       onClick={handleClick}
       role="button"
       tabIndex={isLocal ? -1 : 0}
       aria-label={isLocal ? member.name : `查看${member.name}的资料`}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick() } }}
       style={{
-        cursor: isLocal ? 'default' : 'pointer',
+        cursor: isDragging ? 'grabbing' : 'grab',
         textAlign: 'center',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
+        opacity: isDragging ? 0.4 : 1,
+        transition: 'opacity 0.15s',
+        position: 'relative',
       }}
     >
       <div style={{
@@ -39,11 +47,13 @@ export default function MemberCard({ member }) {
           <img
             src={avatarSrc}
             alt={member.name}
+            draggable={false}
             style={{
               width: '100%',
               height: '100%',
               objectFit: 'contain',
               objectPosition: 'bottom center',
+              pointerEvents: 'none',
             }}
           />
         ) : (
@@ -56,7 +66,9 @@ export default function MemberCard({ member }) {
           </div>
         )}
       </div>
-      <div style={{ fontSize: 12, fontWeight: 500, marginTop: 2 }}>{member.name}</div>
+      <div style={{ fontSize: 11, fontWeight: 500, marginTop: 2, userSelect: 'none' }}>
+        {member.name}
+      </div>
     </div>
   )
 }
