@@ -22,13 +22,18 @@ export default function MemberProfile() {
   const [saving, setSaving] = useState(false)
   const [showDressUp, setShowDressUp] = useState(false)
   const [outfit, setOutfit] = useState([])
+  const outfitRef = useRef([])
   const [selIdx, setSelIdx] = useState(null)
+  const selIdxRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const charRef = useRef(null)
   const dragOffRef = useRef({ x: 0, y: 0 })
 
   const isLocalId = typeof id === 'string' && id.startsWith('local-')
   const localName = isLocalId ? id.replace('local-', '') : null
+
+  useEffect(() => { outfitRef.current = outfit }, [outfit])
+  useEffect(() => { selIdxRef.current = selIdx }, [selIdx])
 
   useEffect(() => {
     if (isLocalId) {
@@ -133,23 +138,25 @@ export default function MemberProfile() {
   }
 
   const handlePointerMove = useCallback((e) => {
-    if (!dragging || selIdx == null) return
+    const idx = selIdxRef.current
+    if (idx == null) return
     const rect = charRef.current.getBoundingClientRect()
     const x = ((e.clientX - dragOffRef.current.x) / rect.width) * 100
     const y = ((e.clientY - dragOffRef.current.y) / rect.height) * 100
-    const next = outfit.map((item, i) => {
-      if (i !== selIdx) return item
+    const next = outfitRef.current.map((item, i) => {
+      if (i !== idx) return item
       return { ...item, x: Math.round(Math.max(0, Math.min(100, x))), y: Math.round(Math.max(0, Math.min(100, y))) }
     })
+    outfitRef.current = next
     setOutfit(next)
-  }, [dragging, selIdx, outfit])
+  }, [])
 
   const handlePointerUp = useCallback(() => {
-    if (dragging) {
-      saveOutfit(member?.name, outfit)
+    if (selIdxRef.current != null) {
+      saveOutfit(member?.name, outfitRef.current)
       setDragging(false)
     }
-  }, [dragging, member, outfit])
+  }, [member])
 
   useEffect(() => {
     if (dragging) {
