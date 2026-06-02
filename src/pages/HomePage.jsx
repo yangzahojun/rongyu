@@ -216,7 +216,7 @@ export default function HomePage() {
         </div>
       ) : (
         <div ref={containerRef} style={{
-          position: 'relative', width: '100%', height: containerHeight, marginBottom: 16, overflow: 'hidden',
+          position: 'relative', width: '100%', height: containerHeight, marginBottom: 16, overflow: 'visible',
         }}>
           {members.map((m) => {
             const pos = positions[m.name] || { x: 0, y: 0 }

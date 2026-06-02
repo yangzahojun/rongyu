@@ -10,7 +10,11 @@ export default function AccessoryRenderer({ items, containerWidth }) {
     const s = item.s ?? 1
     const r = item.r ?? 0
     const o = item.o ?? 1
-    const b = item.b ?? 0
+    const ct = item.ct ?? 0
+    const cr = item.cr ?? 0
+    const cb = item.cb ?? 0
+    const cl = item.cl ?? 0
+    const hasClip = ct > 0 || cr > 0 || cb > 0 || cl > 0
 
     return (
       <div
@@ -25,8 +29,8 @@ export default function AccessoryRenderer({ items, containerWidth }) {
           pointerEvents: 'none',
           opacity: o,
           userSelect: 'none',
-          clipPath: b > 0 ? `inset(0 0 ${b}% 0)` : undefined,
-          overflow: 'hidden',
+          clipPath: hasClip ? `inset(${ct}% ${cr}% ${cb}% ${cl}%)` : undefined,
+          overflow: hasClip ? 'hidden' : undefined,
         }}
       >
         {item.e}

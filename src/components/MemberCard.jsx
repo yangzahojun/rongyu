@@ -53,7 +53,7 @@ export default function MemberCard({ member, size, style, onPointerDown }) {
         width: charW,
         height: charH,
         position: 'relative',
-        overflow: 'hidden',
+        overflow: 'visible',
         pointerEvents: 'none',
       }}>
         {avatarSrc ? (
