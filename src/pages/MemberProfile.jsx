@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus } from '@phosphor-icons/react'
@@ -128,47 +128,45 @@ export default function MemberProfile() {
   const handlePointerDownItem = (e, idx) => {
     e.stopPropagation()
     e.preventDefault()
+    const el = e.currentTarget
+    el.setPointerCapture(e.pointerId)
     setSelIdx(idx)
+    selIdxRef.current = idx
     setDragging(true)
     const rect = charRef.current.getBoundingClientRect()
-    const item = outfit[idx]
+    const item = outfitRef.current[idx]
     dragOffRef.current = {
       x: e.clientX - rect.left - (item.x / 100) * rect.width,
       y: e.clientY - rect.top - (item.y / 100) * rect.height,
     }
   }
 
-  const handlePointerMove = useCallback((e) => {
+  const handlePointerMoveItem = (e) => {
     const idx = selIdxRef.current
     if (idx == null) return
+    e.preventDefault()
     const rect = charRef.current.getBoundingClientRect()
-    const x = ((e.clientX - dragOffRef.current.x) / rect.width) * 100
-    const y = ((e.clientY - dragOffRef.current.y) / rect.height) * 100
+    const px = e.clientX - dragOffRef.current.x
+    const py = e.clientY - dragOffRef.current.y
+    const x = Math.round(Math.max(0, Math.min(100, (px / rect.width) * 100)))
+    const y = Math.round(Math.max(0, Math.min(100, (py / rect.height) * 100)))
     const next = outfitRef.current.map((item, i) => {
       if (i !== idx) return item
-      return { ...item, x: Math.round(Math.max(0, Math.min(100, x))), y: Math.round(Math.max(0, Math.min(100, y))) }
+      return { ...item, x, y }
     })
     outfitRef.current = next
     setOutfit(next)
-  }, [])
+  }
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUpItem = (e) => {
+    e.preventDefault()
+    const el = e.currentTarget
+    el.releasePointerCapture(e.pointerId)
     if (selIdxRef.current != null) {
       saveOutfit(member?.name, outfitRef.current)
-      setDragging(false)
     }
-  }, [member])
-
-  useEffect(() => {
-    if (dragging) {
-      window.addEventListener('pointermove', handlePointerMove)
-      window.addEventListener('pointerup', handlePointerUp)
-      return () => {
-        window.removeEventListener('pointermove', handlePointerMove)
-        window.removeEventListener('pointerup', handlePointerUp)
-      }
-    }
-  }, [dragging, handlePointerMove, handlePointerUp])
+    setDragging(false)
+  }
 
   if (loading) {
     return (
@@ -254,6 +252,9 @@ export default function MemberProfile() {
                   if (!showDressUp) return
                   handlePointerDownItem(e, i)
                 }}
+                onPointerMove={handlePointerMoveItem}
+                onPointerUp={handlePointerUpItem}
+                onLostPointerCapture={handlePointerUpItem}
                 style={{
                   position: 'absolute',
                   left: `${x}%`,
@@ -265,6 +266,7 @@ export default function MemberProfile() {
                   pointerEvents: showDressUp ? 'auto' : 'none',
                   filter: isSel ? 'drop-shadow(0 0 6px var(--color-brand-primary)) brightness(1.2)' : undefined,
                   userSelect: 'none',
+                  touchAction: 'none',
                 }}
               >
                 {item.e}
