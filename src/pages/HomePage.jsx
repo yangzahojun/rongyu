@@ -4,40 +4,50 @@ import { supabase } from '../supabase'
 import { Calendar, Users, BookOpen, PencilSimple, Image } from '@phosphor-icons/react'
 import MemberCard from '../components/MemberCard'
 import memberImages from '../memberImages'
+import { loadCanvasState, saveCanvasState, fetchSharedState, DEFAULT_MEMBER_SIZE, getDevice } from '../outfitUtils'
 
-const POS_KEY = 'rongyu_member_positions'
-const CARD_W = 75
-const CARD_H = 110
+const CARD_H_RATIO = 4/3
 
-function calcGridPositions(members) {
+function calcGridPositions(members, sizes) {
   const cols = 4
   const gapX = 8
   const gapY = 12
-  return members.reduce((acc, m, i) => {
+  const positions = {}
+  members.forEach((m, i) => {
     const col = i % cols
     const row = Math.floor(i / cols)
-    acc[m.name] = { x: col * (CARD_W + gapX), y: row * (CARD_H + gapY) }
-    return acc
-  }, {})
+    const w = sizes[m.name] || DEFAULT_MEMBER_SIZE
+    positions[m.name] = { x: col * (w + gapX), y: row * (w * CARD_H_RATIO + gapY) }
+  })
+  return positions
 }
 
 export default function HomePage() {
   const navigate = useNavigate()
   const [members, setMembers] = useState([])
   const [positions, setPositions] = useState({})
+  const [sizes, setSizes] = useState({})
   const [recentDiaries, setRecentDiaries] = useState([])
   const [todayCourses, setTodayCourses] = useState([])
   const [dragging, setDragging] = useState(null)
   const containerRef = useRef(null)
   const offsetRef = useRef({ x: 0, y: 0 })
+  const device = getDevice()
 
+  useEffect(() => { fetchAll() }, [])
+
+  // 定时拉取共享状态（15秒）
   useEffect(() => {
-    fetchAll()
+    const t = setInterval(fetchAll, 15000)
+    return () => clearInterval(t)
   }, [])
 
   const fetchAll = async () => {
-    let savedPos
-    try { savedPos = JSON.parse(localStorage.getItem(POS_KEY)) } catch {}
+    // 拉Supabase共享状态
+    await fetchSharedState()
+
+    // 加载画布状态
+    const canvas = loadCanvasState()
 
     const { data: m } = await supabase.from('members').select('*').order('id')
     let merged
@@ -51,7 +61,16 @@ export default function HomePage() {
       merged = Object.keys(memberImages).map((name) => ({ id: `local-${name}`, name, bio: '', avatar_url: null }))
     }
     setMembers(merged)
-    setPositions(savedPos || calcGridPositions(merged))
+
+    const savedSizes = canvas.sizes || {}
+    // 为新成员补默认尺寸
+    merged.forEach((m) => { if (!savedSizes[m.name]) savedSizes[m.name] = DEFAULT_MEMBER_SIZE })
+    setSizes(savedSizes)
+
+    const savedPos = canvas.positions || {}
+    // 为新成员补默认位置
+    const hasAll = merged.every((m) => savedPos[m.name])
+    setPositions(hasAll ? savedPos : calcGridPositions(merged, savedSizes))
 
     const today = new Date().toISOString().split('T')[0]
     const { data: c } = await supabase
@@ -69,21 +88,27 @@ export default function HomePage() {
     if (d) setRecentDiaries(d)
   }
 
+  const persist = (pos, sz) => {
+    saveCanvasState({ positions: pos, sizes: sz })
+  }
+
   const containerHeight = members.length === 0 ? 0
     : Math.max(...members.map((m) => {
+        const w = sizes[m.name] || DEFAULT_MEMBER_SIZE
         const p = positions[m.name] || { x: 0, y: 0 }
-        return p.y + CARD_H
+        return p.y + w * CARD_H_RATIO
       })) + 10
 
-  const handlePointerDown = (e, memberId) => {
+  // --- 拖动 ---
+  const handlePointerDown = (e, memberName) => {
     e.preventDefault()
     const rect = containerRef.current.getBoundingClientRect()
-    const pos = positions[memberId] || { x: 0, y: 0 }
+    const pos = positions[memberName] || { x: 0, y: 0 }
     offsetRef.current = {
       x: e.clientX - rect.left - pos.x,
       y: e.clientY - rect.top - pos.y,
     }
-    setDragging(memberId)
+    setDragging(memberName)
   }
 
   const handlePointerMove = useCallback((e) => {
@@ -97,11 +122,12 @@ export default function HomePage() {
   const handlePointerUp = useCallback(() => {
     if (!dragging) return
     setPositions((prev) => {
-      try { localStorage.setItem(POS_KEY, JSON.stringify(prev)) } catch {}
+      const key = getDevice()
+      persist(prev, sizes)
       return prev
     })
     setDragging(null)
-  }, [dragging])
+  }, [dragging, sizes])
 
   useEffect(() => {
     if (dragging) {
@@ -115,9 +141,9 @@ export default function HomePage() {
   }, [dragging, handlePointerMove, handlePointerUp])
 
   const handleReset = () => {
-    const grid = calcGridPositions(members)
+    const grid = calcGridPositions(members, sizes)
     setPositions(grid)
-    try { localStorage.removeItem(POS_KEY) } catch {}
+    saveCanvasState({ positions: grid, sizes })
   }
 
   return (
@@ -125,12 +151,8 @@ export default function HomePage() {
       {/* 小弯欢迎横幅 */}
       <div style={{
         background: 'linear-gradient(135deg, var(--color-surface-primary) 0%, var(--color-brand-subtle) 100%)',
-        borderRadius: 12,
-        padding: 'var(--space-3) var(--space-4)',
-        marginBottom: 16,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
+        borderRadius: 12, padding: 'var(--space-3) var(--space-4)', marginBottom: 16,
+        display: 'flex', alignItems: 'center', gap: 12,
       }}>
         <img src="xiaowan.png" alt="小弯" style={{ height: 56 }} />
         <div>
@@ -141,20 +163,12 @@ export default function HomePage() {
 
       {/* 顶部快捷入口 */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        <button
-          className="btn-primary"
-          onClick={() => navigate('/diary')}
-          aria-label="写日记"
-          style={{ flex: 1, fontSize: 15, padding: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-        >
+        <button className="btn-primary" onClick={() => navigate('/diary')} aria-label="写日记"
+          style={{ flex: 1, fontSize: 15, padding: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
           <PencilSimple size={18} /> 写日记
         </button>
-        <button
-          className="btn-primary"
-          onClick={() => navigate('/showcase')}
-          aria-label="风采展示"
-          style={{ flex: 1, fontSize: 15, padding: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'linear-gradient(135deg, var(--color-brand-primary), var(--color-brand-emphasis))' }}
-        >
+        <button className="btn-primary" onClick={() => navigate('/showcase')} aria-label="风采展示"
+          style={{ flex: 1, fontSize: 15, padding: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'linear-gradient(135deg, var(--color-brand-primary), var(--color-brand-emphasis))' }}>
           <Image size={18} /> 风采展示
         </button>
       </div>
@@ -166,16 +180,10 @@ export default function HomePage() {
           今日课程 ({todayCourses.length}节)
         </h2>
         {todayCourses.length === 0 ? (
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>
-            今天还没有课程安排
-          </p>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>今天还没有课程安排</p>
         ) : (
           todayCourses.map((c) => (
-            <div key={c.id} style={{
-              display: 'flex', justifyContent: 'space-between',
-              padding: '6px 0', borderBottom: '1px solid var(--color-brand-subtle)',
-              fontSize: 13,
-            }}>
+            <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--color-brand-subtle)', fontSize: 13 }}>
               <span style={{ fontWeight: 500 }}>{c.course_name}</span>
               <span>{c.teacher_name}</span>
               <span style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>{c.classes?.name}</span>
@@ -185,54 +193,37 @@ export default function HomePage() {
       </div>
 
       {/* 成员区域 */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: 10,
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
           <Users size={18} weight="fill" style={{ color: 'var(--color-brand-primary)' }} />
           支教队成员 ({members.length}人)
         </h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>拖动可自由排列</span>
-          <button
-            onClick={handleReset}
-            style={{
-              fontSize: 11, padding: '2px 8px',
-              border: '1px solid var(--color-brand-subtle)',
-              borderRadius: 8, background: 'transparent',
-              color: 'var(--color-text-secondary)', cursor: 'pointer',
-            }}
-          >
-            重置
-          </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>{device === 'mobile' ? '📱' : '💻'} 拖动·缩放</span>
+          <button onClick={handleReset} style={{
+            fontSize: 11, padding: '2px 8px', border: '1px solid var(--color-brand-subtle)',
+            borderRadius: 8, background: 'transparent', color: 'var(--color-text-secondary)', cursor: 'pointer',
+          }}>重置</button>
         </div>
       </div>
 
       {/* 成员自由画布 */}
       {members.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 24, marginBottom: 16 }}>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>
-            暂无成员数据
-          </p>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>暂无成员数据</p>
         </div>
       ) : (
-        <div
-          ref={containerRef}
-          style={{
-            position: 'relative',
-            width: '100%',
-            height: containerHeight,
-            marginBottom: 16,
-            overflow: 'hidden',
-          }}
-        >
+        <div ref={containerRef} style={{
+          position: 'relative', width: '100%', height: containerHeight, marginBottom: 16, overflow: 'hidden',
+        }}>
           {members.map((m) => {
             const pos = positions[m.name] || { x: 0, y: 0 }
+            const sz = sizes[m.name] || DEFAULT_MEMBER_SIZE
             return (
               <MemberCard
                 key={m.id}
                 member={m}
+                size={sz}
                 style={{
                   left: pos.x,
                   top: pos.y,
@@ -249,23 +240,17 @@ export default function HomePage() {
       )}
 
       {/* 连接线 */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <div style={{ flex: 1, height: 1, background: 'var(--color-brand-subtle)' }} />
         <BookOpen size={14} weight="fill" style={{ color: 'var(--color-brand-primary)' }} />
         <div style={{ flex: 1, height: 1, background: 'var(--color-brand-subtle)' }} />
       </div>
 
       {/* 最新日记 */}
-      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-        最新日记
-      </h2>
+      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>最新日记</h2>
       {recentDiaries.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 24 }}>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>
-            还没有队员分享日记，快来写第一篇吧 <span aria-hidden="true">&#x1F338;</span>
-          </p>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>还没有队员分享日记，快来写第一篇吧 <span aria-hidden="true">&#x1F338;</span></p>
         </div>
       ) : (
         recentDiaries.map((d) => (
@@ -276,14 +261,10 @@ export default function HomePage() {
               else navigate('/diary')
             }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const m = members.find((m) => m.name === d.author_name && typeof m.id === 'number'); if (m) navigate(`/member/${m.id}`); else navigate('/diary') } }}
-            role="button"
-            tabIndex={0}
-            aria-label={`${d.author_name}的日记`}
-          >
+            role="button" tabIndex={0} aria-label={`${d.author_name}的日记`}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontSize: 13, fontWeight: 600 }}>
-                <span style={{ color: 'var(--color-brand-primary)', marginRight: 2 }}>&#x1F338;</span>
-                {d.author_name}
+                <span style={{ color: 'var(--color-brand-primary)', marginRight: 2 }}>&#x1F338;</span> {d.author_name}
               </span>
               <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{d.diary_date}</span>
             </div>

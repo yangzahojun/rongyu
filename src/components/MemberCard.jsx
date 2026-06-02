@@ -7,7 +7,7 @@ import AccessoryRenderer from './AccessoryRenderer'
 
 const LOCAL_PROFILES = new Set(['丁老师', '王静怡'])
 
-export default function MemberCard({ member, style, onPointerDown }) {
+export default function MemberCard({ member, size, style, onPointerDown }) {
   const navigate = useNavigate()
   const localImage = getMemberImage(member.name)
   const avatarSrc = localImage || member.avatar_url
@@ -15,6 +15,8 @@ export default function MemberCard({ member, style, onPointerDown }) {
   const hasProfile = !isLocal || LOCAL_PROFILES.has(member.name)
   const movedRef = useRef(false)
   const outfit = loadOutfit(member.name)
+  const charW = size || 75
+  const charH = charW * (4/3)
 
   const handlePointerDown = (e) => {
     movedRef.current = false
@@ -25,9 +27,6 @@ export default function MemberCard({ member, style, onPointerDown }) {
     if (movedRef.current) return
     if (hasProfile) navigate(`/member/${member.id}`)
   }
-
-  const charW = 75
-  const charH = charW * (4/3)
 
   return (
     <div
@@ -71,17 +70,17 @@ export default function MemberCard({ member, style, onPointerDown }) {
           />
         ) : (
           <div style={{
-            width: 52, height: 52, borderRadius: '50%', position: 'absolute',
+            width: charW * 0.7, height: charW * 0.7, borderRadius: '50%', position: 'absolute',
             top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
             background: 'linear-gradient(135deg, var(--color-brand-primary), var(--color-brand-subtle))',
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1,
           }}>
-            <User size={24} color="#FFF" />
+            <User size={charW * 0.32} color="#FFF" />
           </div>
         )}
-        <AccessoryRenderer items={outfit} width={charW} height={charH} />
+        <AccessoryRenderer items={outfit} containerWidth={charW} />
       </div>
-      <div style={{ fontSize: 11, fontWeight: 500, marginTop: 2, pointerEvents: 'none' }}>
+      <div style={{ fontSize: Math.round(charW * 0.15), fontWeight: 500, marginTop: 2, pointerEvents: 'none' }}>
         {member.name}
       </div>
     </div>
