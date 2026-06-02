@@ -5,7 +5,7 @@ import { Calendar, Users, BookOpen, PencilSimple, Image } from '@phosphor-icons/
 import MemberCard from '../components/MemberCard'
 import FloatingParticles from '../components/FloatingParticles'
 import memberImages from '../memberImages'
-import { loadCanvasState, saveCanvasState, fetchSharedState, DEFAULT_MEMBER_SIZE, getDevice } from '../outfitUtils'
+import { loadCanvasState, saveCanvasState, DEFAULT_MEMBER_SIZE, getDevice, onSharedStateChange } from '../outfitUtils'
 
 const CARD_H_RATIO = 4/3
 
@@ -37,21 +37,26 @@ export default function HomePage() {
   const sizesRef = useRef({})
   const device = getDevice()
 
-  useEffect(() => { fetchAll() }, [])
+  const [syncTick, setSyncTick] = useState(0)
+  const membersRef = useRef([])
+  useEffect(() => { membersRef.current = members }, [members])
 
-  // 定时拉取共享状态（15秒）
-  useEffect(() => {
-    const t = setInterval(fetchAll, 15000)
-    return () => clearInterval(t)
-  }, [])
-
-  const fetchAll = async () => {
-    // 拉Supabase共享状态
-    await fetchSharedState()
-
-    // 加载画布状态
+  const loadCanvas = () => {
     const canvas = loadCanvasState()
+    const list = membersRef.current
+    setSizes((prev) => {
+      const saved = { ...canvas.sizes }
+      list.forEach((m) => { if (!saved[m.name]) saved[m.name] = prev[m.name] || DEFAULT_MEMBER_SIZE })
+      return saved
+    })
+    setPositions((prev) => {
+      const saved = { ...canvas.positions }
+      list.forEach((m) => { if (!saved[m.name]) saved[m.name] = prev[m.name] || { x: 0, y: 0 } })
+      return saved
+    })
+  }
 
+  const loadInit = async () => {
     let m = null
     try { const r = await supabase.from('members').select('*').order('id'); m = r.data } catch {}
     let merged
@@ -65,28 +70,35 @@ export default function HomePage() {
       merged = Object.keys(memberImages).map((name) => ({ id: `local-${name}`, name, bio: '', avatar_url: null }))
     }
     setMembers(merged)
+    membersRef.current = merged
 
-    const savedSizes = canvas.sizes || {}
-    // 为新成员补默认尺寸
-    merged.forEach((m) => { if (!savedSizes[m.name]) savedSizes[m.name] = DEFAULT_MEMBER_SIZE })
-    setSizes(savedSizes)
+    const canvas = loadCanvasState()
+    const sz = { ...canvas.sizes }
+    merged.forEach((m) => { if (!sz[m.name]) sz[m.name] = DEFAULT_MEMBER_SIZE })
+    setSizes(sz)
 
-    const savedPos = canvas.positions || {}
-    // 为新成员补默认位置
-    const hasAll = merged.every((m) => savedPos[m.name])
-    setPositions(hasAll ? savedPos : calcGridPositions(merged, savedSizes))
+    const pos = { ...canvas.positions }
+    const hasAll = merged.every((m) => pos[m.name])
+    setPositions(hasAll ? pos : calcGridPositions(merged, sz))
 
     try {
       const today = new Date().toISOString().split('T')[0]
-      const { data: c } = await supabase
-        .from('courses').select('*, classes(name)').eq('course_date', today)
-        .order('created_at', { ascending: false })
+      const { data: c } = await supabase.from('courses').select('*, classes(name)').eq('course_date', today).order('created_at', { ascending: false })
       if (c) setTodayCourses(c)
-      const { data: d } = await supabase.from('diaries').select('*')
-        .order('created_at', { ascending: false }).limit(3)
+      const { data: d } = await supabase.from('diaries').select('*').order('created_at', { ascending: false }).limit(3)
       if (d) setRecentDiaries(d)
     } catch {}
   }
+
+  useEffect(() => { loadInit() }, [])
+
+  // 订阅 Supabase 同步：别人修改后自动刷新画布和装扮
+  useEffect(() => {
+    return onSharedStateChange(() => {
+      loadCanvas()
+      setSyncTick((t) => t + 1) // 强制 MemberCard 重渲染以获取新装扮
+    })
+  }, [])
 
   const containerHeight = members.length === 0 ? 0
     : Math.max(...members.map((m) => {
@@ -219,7 +231,7 @@ export default function HomePage() {
         <div ref={containerRef} style={{
           position: 'relative', width: '100%', height: containerHeight, marginBottom: 16, overflow: 'visible',
         }}>
-          <FloatingParticles count={10} areaW={300} areaH={containerHeight} />
+          <FloatingParticles key={syncTick} count={10} areaW={300} areaH={containerHeight} />
           {members.map((m) => {
             const pos = positions[m.name] || { x: 0, y: 0 }
             const sz = sizes[m.name] || DEFAULT_MEMBER_SIZE

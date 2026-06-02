@@ -11,10 +11,7 @@ export const ACCESSORY_CATS = {
 }
 
 export const CAT_NAMES = Object.keys(ACCESSORY_CATS)
-
-// 配饰字号与容器宽度的比例 (editor: 28/140=0.2)
 export const ACC_FONT_RATIO = 0.2
-
 export const DEFAULT_MEMBER_SIZE = 75
 
 // 设备检测
@@ -23,11 +20,7 @@ export function getDevice() {
   return window.innerWidth <= 768 ? 'mobile' : 'desktop'
 }
 
-export function deviceKey(base) {
-  return `${base}_${getDevice()}`
-}
-
-// --- 配饰 CRUD（共享：Supabase优先，localStorage兜底） ---
+// ============== localStorage 读写 ==============
 
 export function loadOutfit(name) {
   try {
@@ -39,14 +32,12 @@ export function loadOutfit(name) {
 
 export function saveOutfit(name, items) {
   try { localStorage.setItem(`rongyu_outfit2_${name}`, JSON.stringify(items)) } catch {}
-  // 尝试同步到Supabase（静默失败）
+  // 实时同步到 Supabase
   syncToSupabase(`outfit_${name}`, items)
 }
 
-// --- 公共画布状态 ---
-
 export function loadCanvasState() {
-  const key = deviceKey('rongyu_canvas')
+  const key = `rongyu_canvas_${getDevice()}`
   try {
     const saved = JSON.parse(localStorage.getItem(key))
     if (saved) return saved
@@ -55,39 +46,77 @@ export function loadCanvasState() {
 }
 
 export function saveCanvasState(state) {
-  const key = deviceKey('rongyu_canvas')
+  const key = `rongyu_canvas_${getDevice()}`
   try { localStorage.setItem(key, JSON.stringify(state)) } catch {}
   syncToSupabase(`canvas_${getDevice()}`, state)
 }
 
-// Supabase同步（后台静默，失败不影响）
-async function syncToSupabase(key, value) {
+// ============== Supabase 同步 ==============
+
+// 写入 Supabase（后台静默，不阻塞UI）
+async function syncToSupabase(dbKey, value) {
   try {
     await supabase.from('shared_state').upsert({
-      key: key,
+      key: dbKey,
       value: JSON.stringify(value),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'key' })
   } catch {}
 }
 
-// 从Supabase拉取共享状态
+// 从 Supabase 拉取所有共享状态 → 写入对应 localStorage key
 export async function fetchSharedState() {
   try {
     const { data } = await supabase.from('shared_state').select('*')
-    if (data) {
-      for (const row of data) {
-        try {
-          // 映射key：outfit_xxx → rongyu_outfit2_xxx, canvas_xxx → rongyu_canvas_xxx
-          let localKey = row.key
-          if (localKey.startsWith('outfit_')) {
-            localKey = 'rongyu_outfit2_' + localKey.slice(7)
-          } else if (localKey.startsWith('canvas_')) {
-            localKey = 'rongyu_canvas_' + localKey.slice(7)
-          }
+    if (!data) return
+
+    const device = getDevice()
+    for (const row of data) {
+      try {
+        const dbKey = row.key // e.g. "outfit_杨赵俊" or "canvas_mobile"
+        const localKey = supabaseKeyToLocal(dbKey, device)
+        if (localKey) {
+          // row.value 是 JSON 字符串，直接写入 localStorage
           localStorage.setItem(localKey, row.value)
-        } catch {}
-      }
+        }
+      } catch {}
     }
   } catch {}
+}
+
+// 映射 Supabase key → localStorage key
+function supabaseKeyToLocal(dbKey, device) {
+  if (dbKey.startsWith('outfit_')) {
+    return 'rongyu_outfit2_' + dbKey.slice(7)
+  }
+  if (dbKey === `canvas_${device}`) {
+    return `rongyu_canvas_${device}`
+  }
+  return null
+}
+
+// ============== 全局同步 Hook ==============
+
+let syncTimer = null
+let syncCallbacks = []
+
+// 注册回调：Supabase 有新数据时触发
+export function onSharedStateChange(callback) {
+  syncCallbacks.push(callback)
+  return () => { syncCallbacks = syncCallbacks.filter(cb => cb !== callback) }
+}
+
+function notifyCallbacks() {
+  syncCallbacks.forEach(cb => { try { cb() } catch {} })
+}
+
+// 启动全局轮询（只启动一次，自动清理）
+export function startSync(delayMs = 3000) {
+  if (syncTimer) return // 已启动
+  syncTimer = setInterval(async () => {
+    await fetchSharedState()
+    notifyCallbacks()
+  }, delayMs)
+  // 立即拉一次
+  fetchSharedState().then(notifyCallbacks)
 }

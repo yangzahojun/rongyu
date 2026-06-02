@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus } from '@phosphor-icons/react'
 import DiaryCard from '../components/DiaryCard'
 import { getMemberImage } from '../memberImages'
-import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit, ACC_FONT_RATIO, loadCanvasState, saveCanvasState, DEFAULT_MEMBER_SIZE } from '../outfitUtils'
+import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit, ACC_FONT_RATIO, loadCanvasState, saveCanvasState, DEFAULT_MEMBER_SIZE, onSharedStateChange } from '../outfitUtils'
 
 const CHAR_W = 140
 const CHAR_H = 190
@@ -37,6 +37,20 @@ export default function MemberProfile() {
   useEffect(() => { selRef.current = selIdx }, [selIdx])
   useEffect(() => { memberRef.current = member }, [member])
   useEffect(() => { charZoomRef.current = charZoom }, [charZoom])
+
+  // 订阅 Supabase 同步：别人修改装扮后自动刷新
+  useEffect(() => {
+    return onSharedStateChange(() => {
+      const m = memberRef.current
+      if (!m) return
+      // 重新读 localStorage（已被 sync 更新）
+      setOutfit(loadOutfit(m.name))
+      const canvas = loadCanvasState()
+      const sz = (canvas.sizes && canvas.sizes[m.name]) || DEFAULT_MEMBER_SIZE
+      const z = Math.round(sz / DEFAULT_MEMBER_SIZE * 10) / 10
+      setCharZoom(z)
+    })
+  }, [])
 
   const isLocalId = typeof id === 'string' && id.startsWith('local-')
   const localName = isLocalId ? id.replace('local-', '') : null

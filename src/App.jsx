@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { HashRouter, Routes, Route, useParams } from 'react-router-dom'
 import BottomNav from './components/BottomNav'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -8,6 +9,7 @@ import ShowcasePage from './pages/ShowcasePage'
 import MemberProfile from './pages/MemberProfile'
 import SearchPage from './pages/SearchPage'
 import XiaoWan from './components/XiaoWan'
+import { startSync } from './outfitUtils'
 
 function ProfileGuard() {
   const { id } = useParams()
@@ -19,6 +21,9 @@ function ProfileGuard() {
 }
 
 export default function App() {
+  // 全局启动共享同步（3秒轮询 Supabase）
+  useEffect(() => { startSync(3000) }, [])
+
   return (
     <HashRouter>
       <div className="app-container">
