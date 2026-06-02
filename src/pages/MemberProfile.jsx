@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
-import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus, Scissors } from '@phosphor-icons/react'
+import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus } from '@phosphor-icons/react'
 import DiaryCard from '../components/DiaryCard'
 import { getMemberImage } from '../memberImages'
 import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit, ACC_FONT_RATIO } from '../outfitUtils'
@@ -26,14 +26,19 @@ export default function MemberProfile() {
   const [selIdx, setSelIdx] = useState(null)
   const [charZoom, setCharZoom] = useState(1)
 
+  // Refs - 所有可变操作走ref，不走state（避免闭包和重渲染问题）
   const charRef = useRef(null)
   const outfitRef = useRef([])
+  const selRef = useRef(null)
   const dragIdx = useRef(null)
   const dragEl = useRef(null)
   const dragOff = useRef({ x: 0, y: 0 })
   const prevSelEl = useRef(null)
+  const memberRef = useRef(null)
 
   useEffect(() => { outfitRef.current = outfit }, [outfit])
+  useEffect(() => { selRef.current = selIdx }, [selIdx])
+  useEffect(() => { memberRef.current = member }, [member])
 
   const isLocalId = typeof id === 'string' && id.startsWith('local-')
   const localName = isLocalId ? id.replace('local-', '') : null
@@ -55,8 +60,8 @@ export default function MemberProfile() {
         setMember(data)
         setOutfit(loadOutfit(data.name))
         setEditBio(data.bio || '')
-        try { const { data: cd } = await supabase.from('courses').select('*, classes(name)').eq('teacher_name', data.name).order('course_date', { ascending: true }); if (cd) setCourses(cd) } catch {}
-        try { const { data: dd } = await supabase.from('diaries').select('*').eq('author_name', data.name).order('created_at', { ascending: false }); if (dd) setDiaries(dd) } catch {}
+        try { const r = await supabase.from('courses').select('*, classes(name)').eq('teacher_name', data.name).order('course_date', { ascending: true }); if (r.data) setCourses(r.data) } catch {}
+        try { const r = await supabase.from('diaries').select('*').eq('author_name', data.name).order('created_at', { ascending: false }); if (r.data) setDiaries(r.data) } catch {}
       }
     } catch {}
     setLoading(false)
@@ -73,56 +78,140 @@ export default function MemberProfile() {
     await supabase.from('members').delete().eq('id', id); navigate('/')
   }
 
-  // --- 换装 ---
-  const persist = (items) => { outfitRef.current = items; saveOutfit(member?.name, items); setOutfit(items) }
-  const handleAddAccessory = (emoji) => { const item = { e: emoji, x: 50, y: 20, s: 1, r: 0, o: 1 }; const n = [...outfit, item]; persist(n); setSelIdx(n.length - 1) }
-  const handleRemoveSelected = () => { if (selIdx == null) return; clearHighlight(); persist(outfit.filter((_, i) => i !== selIdx)); setSelIdx(null) }
-  const updateSel = (fn) => { if (selIdx == null) return; persist(outfitRef.current.map((it,i) => i !== selIdx ? it : fn(it))) }
+  // --- 换装（全部用ref，state仅用于渲染触发） ---
+  const persist = (items) => {
+    outfitRef.current = items
+    saveOutfit(memberRef.current?.name, items)
+    setOutfit(items)
+  }
+
+  const handleAddAccessory = (emoji) => {
+    const item = { e: emoji, x: 50, y: 20, s: 1, r: 0, o: 1 }
+    const n = [...outfitRef.current, item]
+    persist(n)
+    setSelIdx(n.length - 1)
+    selRef.current = n.length - 1
+  }
+
+  const handleRemoveSelected = () => {
+    const idx = selRef.current
+    if (idx == null) return
+    clearHighlight()
+    const n = outfitRef.current.filter((_, i) => i !== idx)
+    persist(n)
+    setSelIdx(null)
+    selRef.current = null
+  }
+
+  // 通用修改选中配饰
+  const modSel = (fn) => {
+    const idx = selRef.current
+    if (idx == null) return
+    persist(outfitRef.current.map((it, i) => i !== idx ? it : fn(it)))
+  }
 
   // --- 高亮 ---
-  const highlightEl = (el) => { if (prevSelEl.current && prevSelEl.current !== el) { prevSelEl.current.style.filter = ''; prevSelEl.current.style.zIndex = '2' }; if (el) { el.style.filter = 'drop-shadow(0 0 6px var(--color-brand-primary)) brightness(1.2)'; el.style.zIndex = '5' }; prevSelEl.current = el }
-  const clearHighlight = () => { if (prevSelEl.current) { prevSelEl.current.style.filter = ''; prevSelEl.current.style.zIndex = '2'; prevSelEl.current = null } }
+  const highlightEl = (el) => {
+    if (prevSelEl.current && prevSelEl.current !== el) {
+      prevSelEl.current.style.filter = ''
+      prevSelEl.current.style.zIndex = '2'
+    }
+    if (el) {
+      el.style.filter = 'drop-shadow(0 0 6px var(--color-brand-primary)) brightness(1.2)'
+      el.style.zIndex = '5'
+    }
+    prevSelEl.current = el
+  }
+  const clearHighlight = () => {
+    if (prevSelEl.current) {
+      prevSelEl.current.style.filter = ''
+      prevSelEl.current.style.zIndex = '2'
+      prevSelEl.current = null
+    }
+  }
 
-  // --- 拖动（无边界限制） ---
+  // --- 拖动 ---
   const onPointerDown = useCallback((e) => {
     const el = e.target.closest('[data-acc]')
-    if (!el) { clearHighlight(); setSelIdx(null); return }
+    if (!el) {
+      clearHighlight()
+      setSelIdx(null)
+      selRef.current = null
+      return
+    }
     e.preventDefault()
     const idx = Number(el.dataset.acc)
-    setSelIdx(idx); highlightEl(el)
-    dragIdx.current = idx; dragEl.current = el
-    el.setPointerCapture(e.pointerId); el.style.cursor = 'grabbing'
+    selRef.current = idx
+    setSelIdx(idx)
+    highlightEl(el)
+
+    dragIdx.current = idx
+    dragEl.current = el
+    el.setPointerCapture(e.pointerId)
+    el.style.cursor = 'grabbing'
+
     const rect = charRef.current.getBoundingClientRect()
     const item = outfitRef.current[idx]
-    dragOff.current = { x: e.clientX - rect.left - (item.x / 100) * rect.width, y: e.clientY - rect.top - (item.y / 100) * rect.height }
+    dragOff.current = {
+      x: e.clientX - rect.left - (item.x / 100) * rect.width,
+      y: e.clientY - rect.top - (item.y / 100) * rect.height,
+    }
   }, [])
 
   const onPointerMove = useCallback((e) => {
-    if (dragIdx.current == null) return; e.preventDefault()
+    if (dragIdx.current == null) return
+    e.preventDefault()
     const rect = charRef.current.getBoundingClientRect()
     const x = Math.round(((e.clientX - dragOff.current.x) / rect.width) * 100)
     const y = Math.round(((e.clientY - dragOff.current.y) / rect.height) * 100)
-    if (dragEl.current) { dragEl.current.style.left = `${x}%`; dragEl.current.style.top = `${y}%` }
-    outfitRef.current = outfitRef.current.map((it, i) => i !== dragIdx.current ? it : { ...it, x, y })
+    if (dragEl.current) {
+      dragEl.current.style.left = `${x}%`
+      dragEl.current.style.top = `${y}%`
+    }
+    outfitRef.current = outfitRef.current.map((it, i) =>
+      i !== dragIdx.current ? it : { ...it, x, y }
+    )
   }, [])
 
   const onPointerUp = useCallback((e) => {
-    if (dragIdx.current == null) return; e.preventDefault()
-    if (dragEl.current) { dragEl.current.releasePointerCapture(e.pointerId); dragEl.current.style.cursor = 'grab' }
-    saveOutfit(member?.name, outfitRef.current); setOutfit([...outfitRef.current])
-    dragIdx.current = null; dragEl.current = null
-  }, [member])
+    if (dragIdx.current == null) return
+    e.preventDefault()
+    if (dragEl.current) {
+      dragEl.current.releasePointerCapture(e.pointerId)
+      dragEl.current.style.cursor = 'grab'
+    }
+    saveOutfit(memberRef.current?.name, outfitRef.current)
+    setOutfit([...outfitRef.current])
+    dragIdx.current = null
+    dragEl.current = null
+  }, [])
 
-  useEffect(() => { if (selIdx != null && selIdx >= outfit.length) { clearHighlight(); setSelIdx(null) } }, [outfit, selIdx])
+  useEffect(() => {
+    if (selIdx != null && selIdx >= outfit.length) {
+      clearHighlight()
+      setSelIdx(null)
+      selRef.current = null
+    }
+  }, [outfit, selIdx])
 
-  if (loading) return <div className="page-content" style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>加载中...</div>
-  if (!member) return <div className="page-content" style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>{isLocalId ? '成员不存在' : '加载成员失败，请返回重试'}</div>
+  if (loading) {
+    return <div className="page-content" style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>加载中...</div>
+  }
+  if (!member) {
+    return (
+      <div className="page-content" style={{ textAlign: 'center', padding: 60 }}>
+        <p style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>{isLocalId ? '成员不存在' : '加载失败，请返回重试'}</p>
+        <button className="btn-outline" onClick={() => navigate('/')} style={{ fontSize: 13, padding: '6px 18px', marginTop: 12 }}>返回首页</button>
+      </div>
+    )
+  }
 
   const avatarSrc = getMemberImage(member.name) || member.avatar_url
   const editorFont = Math.round(CHAR_W * ACC_FONT_RATIO)
-  const selItem = selIdx != null ? outfit[selIdx] : null
   const scaledW = CHAR_W * charZoom
   const scaledH = CHAR_H * charZoom
+  // selItem 使用 selIdx 和 outfit（都在同一个渲染周期内稳定）
+  const localSelItem = selIdx != null ? outfit[selIdx] : null
 
   return (
     <div className="page-content">
@@ -135,9 +224,9 @@ export default function MemberProfile() {
         {showDressUp && (
           <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:8 }}>
             <span style={{ fontSize:11,color:'var(--color-text-secondary)' }}>人物缩放</span>
-            <button onClick={()=>setCharZoom(z=>Math.round(Math.max(0.5,Math.min(2,z-0.1))*10)/10)} style={cs.btn}><Minus size={12}/></button>
-            <span style={{ fontSize:12,minWidth:36,textAlign:'center' }}>{Math.round(charZoom * 100)}%</span>
-            <button onClick={()=>setCharZoom(z=>Math.round(Math.min(2,z+0.1)*10)/10)} style={cs.btn}><Plus size={12}/></button>
+            <button onClick={()=>setCharZoom(z=>Math.round(Math.max(0.5,Math.min(2,z-0.1))*10)/10)} style={css.btn}><Minus size={12}/></button>
+            <span style={{ fontSize:12,minWidth:36,textAlign:'center' }}>{Math.round(charZoom*100)}%</span>
+            <button onClick={()=>setCharZoom(z=>Math.round(Math.min(2,z+0.1)*10)/10)} style={css.btn}><Plus size={12}/></button>
           </div>
         )}
 
@@ -166,28 +255,26 @@ export default function MemberProfile() {
                 <User size={32} color="#FFF" />
               </div>
             )}
-
             {outfit.map((item, i) => {
               const x = item.x ?? 50
               const y = item.y ?? 20
-              const s = item.s ?? 1
-              const r = item.r ?? 0
-              const o = item.o ?? 1
-              const ct = item.ct ?? 0
-              const cr = item.cr ?? 0
-              const cb = item.cb ?? 0
-              const cl = item.cl ?? 0
-              const hasClip = ct > 0 || cr > 0 || cb > 0 || cl > 0
-
+              const sv = item.s ?? 1
+              const rv = item.r ?? 0
+              const ov = item.o ?? 1
+              const t = item.ct ?? 0
+              const r = item.cr ?? 0
+              const b = item.cb ?? 0
+              const l = item.cl ?? 0
+              const hasClip = t > 0 || r > 0 || b > 0 || l > 0
               return (
                 <div key={i} data-acc={i} style={{
                   position:'absolute', left:`${x}%`, top:`${y}%`,
-                  transform:`translate(-50%,-50%) scale(${s}) rotate(${r}deg)`,
-                  fontSize: editorFont, zIndex:2, opacity:o,
+                  transform:`translate(-50%,-50%) scale(${sv}) rotate(${rv}deg)`,
+                  fontSize: editorFont, zIndex:2, opacity:ov,
                   cursor: showDressUp ? 'grab' : undefined,
                   pointerEvents: showDressUp ? 'auto' : 'none',
                   userSelect:'none', touchAction:'none',
-                  clipPath: hasClip ? `inset(${ct}% ${cr}% ${cb}% ${cl}%)` : undefined,
+                  clipPath: hasClip ? `inset(${t}% ${r}% ${b}% ${l}%)` : undefined,
                   overflow: hasClip ? 'hidden' : undefined,
                 }}>{item.e}</div>
               )
@@ -197,58 +284,55 @@ export default function MemberProfile() {
 
         <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{member.name}</h2>
 
-        <button onClick={()=>{setShowDressUp(!showDressUp);setSelIdx(null);clearHighlight()}}
+        <button onClick={()=>{setShowDressUp(!showDressUp);setSelIdx(null);selRef.current=null;clearHighlight()}}
           style={{ fontSize:13,padding:'6px 16px',marginBottom:10,border:'1px solid var(--color-brand-primary)',borderRadius:16,background:showDressUp?'var(--color-brand-primary)':'transparent',color:showDressUp?'#fff':'var(--color-brand-primary)',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6 }}>
           <TShirt size={16} /> {showDressUp ? '收起换装' : '换装'}
         </button>
 
         {showDressUp && (
           <div style={{ background:'var(--color-surface-primary)',borderRadius:12,padding:10,marginBottom:10,border:'1px solid var(--color-brand-subtle)' }}>
-            {selItem && (
+            {localSelItem && (
               <div style={{ display:'flex',flexDirection:'column',gap:6,marginBottom:10,padding:8,background:'var(--color-surface-card)',borderRadius:10,fontSize:12 }}>
-                {/* 行1: 基本信息 */}
+                {/* 行1: 基本控制 */}
                 <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:4,flexWrap:'wrap' }}>
-                  <span style={{ fontSize:20 }}>{selItem.e}</span>
-                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>x:{selItem.x}% y:{selItem.y}%</span>
-                  <button onClick={()=>updateSel(it=>({...it,s:Math.round(Math.max(0.3,Math.min(3,it.s-0.1))*10)/10}))} style={cs.btn}><Minus size={12}/></button>
-                  <span style={cs.val}>{selItem.s}x</span>
-                  <button onClick={()=>updateSel(it=>({...it,s:Math.round(Math.min(3,it.s+0.1)*10)/10}))} style={cs.btn}><Plus size={12}/></button>
-                  <button onClick={()=>updateSel(it=>({...it,r:Math.round((it.r-15)%360)}))} style={cs.btn}>↺</button>
-                  <span style={cs.val}>{selItem.r}°</span>
-                  <button onClick={()=>updateSel(it=>({...it,r:Math.round((it.r+15)%360)}))} style={cs.btn}>↻</button>
-                  <span style={{ fontSize:10,color:'var(--color-text-secondary)',marginLeft:4 }}>透明</span>
-                  <button onClick={()=>updateSel(it=>({...it,o:Math.round(Math.max(0,Math.min(1,(it.o||1)-0.1))*10)/10}))} style={cs.btn}><Minus size={10}/></button>
-                  <span style={cs.val}>{Math.round((selItem.o||1)*100)}%</span>
-                  <button onClick={()=>updateSel(it=>({...it,o:Math.round(Math.min(1,(it.o||1)+0.1)*10)/10}))} style={cs.btn}><Plus size={10}/></button>
-                  <button onClick={handleRemoveSelected} style={{ ...cs.btn,color:'#E74C3C',borderColor:'#E74C3C',marginLeft:8 }}>删除</button>
+                  <span style={{ fontSize:20 }}>{localSelItem.e}</span>
+                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>x:{localSelItem.x}% y:{localSelItem.y}%</span>
+                  <button onClick={()=>modSel(it=>({...it,s:Math.round(Math.max(0.3,Math.min(3,it.s-0.1))*10)/10}))} style={css.btn}><Minus size={12}/></button>
+                  <span style={css.val}>{localSelItem.s}x</span>
+                  <button onClick={()=>modSel(it=>({...it,s:Math.round(Math.min(3,it.s+0.1)*10)/10}))} style={css.btn}><Plus size={12}/></button>
+                  <button onClick={()=>modSel(it=>({...it,r:Math.round((it.r-15)%360)}))} style={css.btn}>↺</button>
+                  <span style={css.val}>{localSelItem.r}°</span>
+                  <button onClick={()=>modSel(it=>({...it,r:Math.round((it.r+15)%360)}))} style={css.btn}>↻</button>
+                  <button onClick={()=>modSel(it=>({...it,o:Math.round(Math.max(0,Math.min(1,(it.o||1)-0.1))*10)/10}))} style={css.btn}><Minus size={10}/></button>
+                  <span style={css.val}>{Math.round((localSelItem.o||1)*100)}%</span>
+                  <button onClick={()=>modSel(it=>({...it,o:Math.round(Math.min(1,(it.o||1)+0.1)*10)/10}))} style={css.btn}><Plus size={10}/></button>
+                  <button onClick={handleRemoveSelected} style={{ ...css.btn,color:'#E74C3C',borderColor:'#E74C3C',marginLeft:8 }}>删除</button>
                 </div>
                 {/* 行2: 四边裁剪 */}
                 <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:3,flexWrap:'wrap' }}>
-                  <Scissors size={12} style={{ color:'var(--color-text-secondary)' }}/>
-                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>裁剪</span>
                   <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>上</span>
-                  <button onClick={()=>updateSel(it=>({...it,ct:Math.round(Math.max(0,Math.min(90,(it.ct||0)-5))*10)/10}))} style={cs.btn}><Minus size={10}/></button>
-                  <span style={{ ...cs.val,minWidth:24 }}>{Math.round(selItem.ct||0)}%</span>
-                  <button onClick={()=>updateSel(it=>({...it,ct:Math.round(Math.min(90,(it.ct||0)+5)*10)/10}))} style={cs.btn}><Plus size={10}/></button>
+                  <button onClick={()=>modSel(it=>({...it,ct:Math.max(0,(it.ct||0)-5)}))} style={css.btn}><Minus size={10}/></button>
+                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.ct||0}%</span>
+                  <button onClick={()=>modSel(it=>({...it,ct:Math.min(90,(it.ct||0)+5)}))} style={css.btn}><Plus size={10}/></button>
                   <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>右</span>
-                  <button onClick={()=>updateSel(it=>({...it,cr:Math.round(Math.max(0,Math.min(90,(it.cr||0)-5))*10)/10}))} style={cs.btn}><Minus size={10}/></button>
-                  <span style={{ ...cs.val,minWidth:24 }}>{Math.round(selItem.cr||0)}%</span>
-                  <button onClick={()=>updateSel(it=>({...it,cr:Math.round(Math.min(90,(it.cr||0)+5)*10)/10}))} style={cs.btn}><Plus size={10}/></button>
+                  <button onClick={()=>modSel(it=>({...it,cr:Math.max(0,(it.cr||0)-5)}))} style={css.btn}><Minus size={10}/></button>
+                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.cr||0}%</span>
+                  <button onClick={()=>modSel(it=>({...it,cr:Math.min(90,(it.cr||0)+5)}))} style={css.btn}><Plus size={10}/></button>
                   <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>下</span>
-                  <button onClick={()=>updateSel(it=>({...it,cb:Math.round(Math.max(0,Math.min(90,(it.cb||0)-5))*10)/10}))} style={cs.btn}><Minus size={10}/></button>
-                  <span style={{ ...cs.val,minWidth:24 }}>{Math.round(selItem.cb||0)}%</span>
-                  <button onClick={()=>updateSel(it=>({...it,cb:Math.round(Math.min(90,(it.cb||0)+5)*10)/10}))} style={cs.btn}><Plus size={10}/></button>
+                  <button onClick={()=>modSel(it=>({...it,cb:Math.max(0,(it.cb||0)-5)}))} style={css.btn}><Minus size={10}/></button>
+                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.cb||0}%</span>
+                  <button onClick={()=>modSel(it=>({...it,cb:Math.min(90,(it.cb||0)+5)}))} style={css.btn}><Plus size={10}/></button>
                   <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>左</span>
-                  <button onClick={()=>updateSel(it=>({...it,cl:Math.round(Math.max(0,Math.min(90,(it.cl||0)-5))*10)/10}))} style={cs.btn}><Minus size={10}/></button>
-                  <span style={{ ...cs.val,minWidth:24 }}>{Math.round(selItem.cl||0)}%</span>
-                  <button onClick={()=>updateSel(it=>({...it,cl:Math.round(Math.min(90,(it.cl||0)+5)*10)/10}))} style={cs.btn}><Plus size={10}/></button>
+                  <button onClick={()=>modSel(it=>({...it,cl:Math.max(0,(it.cl||0)-5)}))} style={css.btn}><Minus size={10}/></button>
+                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.cl||0}%</span>
+                  <button onClick={()=>modSel(it=>({...it,cl:Math.min(90,(it.cl||0)+5)}))} style={css.btn}><Plus size={10}/></button>
                 </div>
               </div>
             )}
 
-            {selItem == null && (
+            {!localSelItem && (
               <p style={{ fontSize:11,color:'var(--color-text-secondary)',marginBottom:8 }}>
-                点击下方添加配饰 → 任意拖动（无边界） → 缩放旋转 → 四边裁剪
+                点击下方配饰添加 → 拖动任意位置 → 缩放旋转 → 四边裁剪
               </p>
             )}
 
@@ -319,7 +403,7 @@ export default function MemberProfile() {
   )
 }
 
-const cs = {
+const css = {
   btn: { width:26,height:26,borderRadius:6,border:'1px solid var(--color-brand-subtle)',background:'var(--color-surface-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'var(--color-text-primary)' },
   val: { fontSize:11,minWidth:30,textAlign:'center',color:'var(--color-text-secondary)' },
 }
