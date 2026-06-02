@@ -98,7 +98,7 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
         )}
         <AccessoryRenderer items={outfit} containerWidth={charW} />
       </div>
-      <div style={{ fontSize: Math.round(charW * 0.15), fontWeight: 500, marginTop: 2, pointerEvents: 'none', userSelect: 'none' }}>
+      <div style={{ fontSize: 12, fontWeight: 500, marginTop: 4, pointerEvents: 'none', userSelect: 'none' }}>
         {member.name}
       </div>
     </div>

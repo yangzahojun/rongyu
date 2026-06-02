@@ -247,7 +247,7 @@ export default function HomePage() {
                   top: pos.y,
                   cursor: isDragged ? 'grabbing' : 'grab',
                   opacity: isDragged ? 0.7 : 1,
-                  zIndex: isDragged ? 10 : 1,
+                  zIndex: isDragged ? 999 : 1,
                   transition: isDragged ? 'none' : 'opacity 0.15s',
                 }}
                 onPointerDown={(e) => handlePointerDown(e, m.name)}
