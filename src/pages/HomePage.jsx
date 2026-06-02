@@ -1,41 +1,43 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { Calendar, Users, BookOpen, PencilSimple, Image } from '@phosphor-icons/react'
 import MemberCard from '../components/MemberCard'
 import memberImages from '../memberImages'
 
-const ORDER_KEY = 'rongyu_member_order'
+const POS_KEY = 'rongyu_member_positions'
+const CARD_W = 75
+const CARD_H = 110
 
-function applyOrder(list, order) {
-  if (!order || order.length === 0) return list
-  const orderMap = new Map(order.map((name, i) => [name, i]))
-  const inOrder = list.filter((m) => orderMap.has(m.name))
-  const notInOrder = list.filter((m) => !orderMap.has(m.name))
-  inOrder.sort((a, b) => orderMap.get(a.name) - orderMap.get(b.name))
-  return [...inOrder, ...notInOrder]
+function calcGridPositions(members) {
+  const cols = 4
+  const gapX = 8
+  const gapY = 12
+  return members.reduce((acc, m, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    acc[m.name] = { x: col * (CARD_W + gapX), y: row * (CARD_H + gapY) }
+    return acc
+  }, {})
 }
 
 export default function HomePage() {
   const navigate = useNavigate()
   const [members, setMembers] = useState([])
+  const [positions, setPositions] = useState({})
   const [recentDiaries, setRecentDiaries] = useState([])
   const [todayCourses, setTodayCourses] = useState([])
-  const [dragIndex, setDragIndex] = useState(null)
-  const dragOverRef = useRef(null)
+  const [dragging, setDragging] = useState(null)
+  const containerRef = useRef(null)
+  const offsetRef = useRef({ x: 0, y: 0 })
 
   useEffect(() => {
     fetchAll()
   }, [])
 
-  const saveOrder = (list) => {
-    const names = list.map((m) => m.name)
-    try { localStorage.setItem(ORDER_KEY, JSON.stringify(names)) } catch {}
-  }
-
   const fetchAll = async () => {
-    let stored
-    try { stored = JSON.parse(localStorage.getItem(ORDER_KEY)) } catch {}
+    let savedPos
+    try { savedPos = JSON.parse(localStorage.getItem(POS_KEY)) } catch {}
 
     const { data: m } = await supabase.from('members').select('*').order('id')
     let merged
@@ -44,12 +46,12 @@ export default function HomePage() {
       const extras = Object.keys(memberImages)
         .filter((name) => !dbNames.has(name))
         .map((name, i) => ({ id: `local-${i}`, name, bio: '', avatar_url: null }))
-      merged = applyOrder([...m, ...extras], stored)
+      merged = [...m, ...extras]
     } else {
-      const fallback = Object.keys(memberImages).map((name, i) => ({ id: `local-${i}`, name, bio: '', avatar_url: null }))
-      merged = applyOrder(fallback, stored)
+      merged = Object.keys(memberImages).map((name, i) => ({ id: `local-${i}`, name, bio: '', avatar_url: null }))
     }
     setMembers(merged)
+    setPositions(savedPos || calcGridPositions(merged))
 
     const today = new Date().toISOString().split('T')[0]
     const { data: c } = await supabase
@@ -67,35 +69,55 @@ export default function HomePage() {
     if (d) setRecentDiaries(d)
   }
 
-  const handleDragStart = (e, index) => {
-    setDragIndex(index)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', index.toString())
-  }
+  const containerHeight = members.length === 0 ? 0
+    : Math.max(...members.map((m) => {
+        const p = positions[m.name] || { x: 0, y: 0 }
+        return p.y + CARD_H
+      })) + 10
 
-  const handleDragOver = (e, index) => {
+  const handlePointerDown = (e, memberId) => {
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    dragOverRef.current = index
-  }
-
-  const handleDragEnd = () => {
-    const from = dragIndex
-    const to = dragOverRef.current
-    if (from != null && to != null && from !== to) {
-      const reordered = [...members]
-      const [item] = reordered.splice(from, 1)
-      reordered.splice(to, 0, item)
-      setMembers(reordered)
-      saveOrder(reordered)
+    const rect = containerRef.current.getBoundingClientRect()
+    const pos = positions[memberId] || { x: 0, y: 0 }
+    offsetRef.current = {
+      x: e.clientX - rect.left - pos.x,
+      y: e.clientY - rect.top - pos.y,
     }
-    setDragIndex(null)
-    dragOverRef.current = null
+    setDragging(memberId)
   }
 
-  const handleDrop = (e, index) => {
-    e.preventDefault()
-    dragOverRef.current = index
+  const handlePointerMove = useCallback((e) => {
+    if (!dragging) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const newX = Math.max(0, e.clientX - rect.left - offsetRef.current.x)
+    const newY = Math.max(0, e.clientY - rect.top - offsetRef.current.y)
+    setPositions((prev) => ({ ...prev, [dragging]: { x: newX, y: newY } }))
+  }, [dragging])
+
+  const handlePointerUp = useCallback(() => {
+    if (!dragging) return
+    setPositions((prev) => {
+      try { localStorage.setItem(POS_KEY, JSON.stringify(prev)) } catch {}
+      return prev
+    })
+    setDragging(null)
+  }, [dragging])
+
+  useEffect(() => {
+    if (dragging) {
+      window.addEventListener('pointermove', handlePointerMove)
+      window.addEventListener('pointerup', handlePointerUp)
+      return () => {
+        window.removeEventListener('pointermove', handlePointerMove)
+        window.removeEventListener('pointerup', handlePointerUp)
+      }
+    }
+  }, [dragging, handlePointerMove, handlePointerUp])
+
+  const handleReset = () => {
+    const grid = calcGridPositions(members)
+    setPositions(grid)
+    try { localStorage.removeItem(POS_KEY) } catch {}
   }
 
   return (
@@ -171,10 +193,23 @@ export default function HomePage() {
           <Users size={18} weight="fill" style={{ color: 'var(--color-brand-primary)' }} />
           支教队成员 ({members.length}人)
         </h2>
-        <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>长按拖动排序</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>拖动可自由排列</span>
+          <button
+            onClick={handleReset}
+            style={{
+              fontSize: 11, padding: '2px 8px',
+              border: '1px solid var(--color-brand-subtle)',
+              borderRadius: 8, background: 'transparent',
+              color: 'var(--color-text-secondary)', cursor: 'pointer',
+            }}
+          >
+            重置
+          </button>
+        </div>
       </div>
 
-      {/* 成员卡片网格 */}
+      {/* 成员自由画布 */}
       {members.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: 24, marginBottom: 16 }}>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>
@@ -182,24 +217,34 @@ export default function HomePage() {
           </p>
         </div>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
-          gap: 12,
-          marginBottom: 16,
-        }}>
-          {members.map((m, i) => (
-            <MemberCard
-              key={m.id}
-              member={m}
-              index={i}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              onDrop={handleDrop}
-              isDragging={dragIndex === i}
-            />
-          ))}
+        <div
+          ref={containerRef}
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: containerHeight,
+            marginBottom: 16,
+            overflow: 'hidden',
+          }}
+        >
+          {members.map((m) => {
+            const pos = positions[m.name] || { x: 0, y: 0 }
+            return (
+              <MemberCard
+                key={m.id}
+                member={m}
+                style={{
+                  left: pos.x,
+                  top: pos.y,
+                  cursor: dragging === m.name ? 'grabbing' : 'grab',
+                  opacity: dragging === m.name ? 0.7 : 1,
+                  zIndex: dragging === m.name ? 10 : 1,
+                  transition: dragging === m.name ? 'none' : 'opacity 0.15s',
+                }}
+                onPointerDown={(e) => handlePointerDown(e, m.name)}
+              />
+            )
+          })}
         </div>
       )}
 
