@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { Calendar, Users, BookOpen, PencilSimple, Image } from '@phosphor-icons/react'
 import MemberCard from '../components/MemberCard'
+import FloatingParticles from '../components/FloatingParticles'
 import memberImages from '../memberImages'
 import { loadCanvasState, saveCanvasState, fetchSharedState, DEFAULT_MEMBER_SIZE, getDevice } from '../outfitUtils'
 
@@ -218,21 +219,24 @@ export default function HomePage() {
         <div ref={containerRef} style={{
           position: 'relative', width: '100%', height: containerHeight, marginBottom: 16, overflow: 'visible',
         }}>
+          <FloatingParticles count={10} areaW={300} areaH={containerHeight} />
           {members.map((m) => {
             const pos = positions[m.name] || { x: 0, y: 0 }
             const sz = sizes[m.name] || DEFAULT_MEMBER_SIZE
+            const isDragged = dragging === m.name
             return (
               <MemberCard
                 key={m.id}
                 member={m}
                 size={sz}
+                isDragging={isDragged}
                 style={{
                   left: pos.x,
                   top: pos.y,
-                  cursor: dragging === m.name ? 'grabbing' : 'grab',
-                  opacity: dragging === m.name ? 0.7 : 1,
-                  zIndex: dragging === m.name ? 10 : 1,
-                  transition: dragging === m.name ? 'none' : 'opacity 0.15s',
+                  cursor: isDragged ? 'grabbing' : 'grab',
+                  opacity: isDragged ? 0.7 : 1,
+                  zIndex: isDragged ? 10 : 1,
+                  transition: isDragged ? 'none' : 'opacity 0.15s',
                 }}
                 onPointerDown={(e) => handlePointerDown(e, m.name)}
               />

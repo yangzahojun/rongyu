@@ -7,7 +7,24 @@ import AccessoryRenderer from './AccessoryRenderer'
 
 const LOCAL_PROFILES = new Set(['丁老师', '王静怡'])
 
-export default function MemberCard({ member, size, style, onPointerDown }) {
+// 从名字hash得到稳定动画类型
+export const ANIM_TYPES = ['float', 'sway', 'bounce', 'breathe', 'wiggle']
+
+export function getAnimType(name) {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0
+  return ANIM_TYPES[Math.abs(h) % ANIM_TYPES.length]
+}
+
+const ANIM_CSS = {
+  float: { animation: 'char-float 3s ease-in-out infinite' },
+  sway: { animation: 'char-sway 3.5s ease-in-out infinite', transformOrigin: 'bottom center' },
+  bounce: { animation: 'char-bounce 2.8s ease-in-out infinite' },
+  breathe: { animation: 'char-breathe 3.2s ease-in-out infinite' },
+  wiggle: { animation: 'char-wiggle 3s ease-in-out infinite', transformOrigin: 'bottom center' },
+}
+
+export default function MemberCard({ member, size, style, onPointerDown, isDragging }) {
   const navigate = useNavigate()
   const localImage = getMemberImage(member.name)
   const avatarSrc = localImage || member.avatar_url
@@ -17,6 +34,8 @@ export default function MemberCard({ member, size, style, onPointerDown }) {
   const outfit = loadOutfit(member.name)
   const charW = size || 75
   const charH = charW * (4/3)
+  const animType = getAnimType(member.name)
+  const anim = isDragging ? {} : ANIM_CSS[animType]
 
   const handlePointerDown = (e) => {
     movedRef.current = false
@@ -50,11 +69,10 @@ export default function MemberCard({ member, size, style, onPointerDown }) {
       }}
     >
       <div style={{
-        width: charW,
-        height: charH,
-        position: 'relative',
-        overflow: 'visible',
+        width: charW, height: charH,
+        position: 'relative', overflow: 'visible',
         pointerEvents: 'none',
+        ...anim,
       }}>
         {avatarSrc ? (
           <img
@@ -80,7 +98,7 @@ export default function MemberCard({ member, size, style, onPointerDown }) {
         )}
         <AccessoryRenderer items={outfit} containerWidth={charW} />
       </div>
-      <div style={{ fontSize: Math.round(charW * 0.15), fontWeight: 500, marginTop: 2, pointerEvents: 'none' }}>
+      <div style={{ fontSize: Math.round(charW * 0.15), fontWeight: 500, marginTop: 2, pointerEvents: 'none', userSelect: 'none' }}>
         {member.name}
       </div>
     </div>
