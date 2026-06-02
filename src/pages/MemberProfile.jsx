@@ -16,6 +16,7 @@ export default function MemberProfile() {
   const [courses, setCourses] = useState([])
   const [diaries, setDiaries] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editBio, setEditBio] = useState('')
   const [editName, setEditName] = useState('')
@@ -52,17 +53,25 @@ export default function MemberProfile() {
   }, [id])
 
   const fetchMember = async () => {
-    const { data } = await supabase.from('members').select('*').eq('id', id).single()
-    if (data) {
-      setMember(data)
-      setOutfit(loadOutfit(data.name))
-      setEditBio(data.bio || '')
-      const { data: cd } = await supabase.from('courses').select('*, classes(name)')
-        .eq('teacher_name', data.name).order('course_date', { ascending: true })
-      if (cd) setCourses(cd)
-      const { data: dd } = await supabase.from('diaries').select('*')
-        .eq('author_name', data.name).order('created_at', { ascending: false })
-      if (dd) setDiaries(dd)
+    try {
+      const { data } = await supabase.from('members').select('*').eq('id', id).single()
+      if (data) {
+        setMember(data)
+        setOutfit(loadOutfit(data.name))
+        setEditBio(data.bio || '')
+        try {
+          const { data: cd } = await supabase.from('courses').select('*, classes(name)')
+            .eq('teacher_name', data.name).order('course_date', { ascending: true })
+          if (cd) setCourses(cd)
+        } catch {}
+        try {
+          const { data: dd } = await supabase.from('diaries').select('*')
+            .eq('author_name', data.name).order('created_at', { ascending: false })
+          if (dd) setDiaries(dd)
+        } catch {}
+      }
+    } catch {
+      setError(true)
     }
     setLoading(false)
   }
@@ -192,7 +201,20 @@ export default function MemberProfile() {
   }, [outfit, selIdx])
 
   if (loading) return <div className="page-content" style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>加载中...</div>
-  if (!member) return <div className="page-content" style={{ textAlign: 'center', padding: 60, color: 'var(--color-text-secondary)' }}>成员不存在</div>
+  if (!member) {
+    return (
+      <div className="page-content" style={{ textAlign: 'center', padding: 60 }}>
+        {error ? (
+          <div>
+            <p style={{ color: 'var(--color-text-secondary)', fontSize: 14, marginBottom: 12 }}>数据库暂不可用</p>
+            <button className="btn-outline" onClick={() => navigate('/')} style={{ fontSize: 13, padding: '6px 18px' }}>返回首页</button>
+          </div>
+        ) : (
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 14 }}>成员不存在</p>
+        )}
+      </div>
+    )
+  }
 
   const avatarSrc = getMemberImage(member.name) || member.avatar_url
   const editorFont = Math.round(CHAR_W * ACC_FONT_RATIO)

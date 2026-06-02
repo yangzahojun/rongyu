@@ -51,9 +51,10 @@ export default function HomePage() {
     // 加载画布状态
     const canvas = loadCanvasState()
 
-    const { data: m } = await supabase.from('members').select('*').order('id')
+    let m = null
+    try { const r = await supabase.from('members').select('*').order('id'); m = r.data } catch {}
     let merged
-    if (m) {
+    if (m && m.length > 0) {
       const dbNames = new Set(m.map((x) => x.name))
       const extras = Object.keys(memberImages)
         .filter((name) => !dbNames.has(name))
@@ -74,20 +75,16 @@ export default function HomePage() {
     const hasAll = merged.every((m) => savedPos[m.name])
     setPositions(hasAll ? savedPos : calcGridPositions(merged, savedSizes))
 
-    const today = new Date().toISOString().split('T')[0]
-    const { data: c } = await supabase
-      .from('courses')
-      .select('*, classes(name)')
-      .eq('course_date', today)
-      .order('created_at', { ascending: false })
-    if (c) setTodayCourses(c)
-
-    const { data: d } = await supabase
-      .from('diaries')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(3)
-    if (d) setRecentDiaries(d)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const { data: c } = await supabase
+        .from('courses').select('*, classes(name)').eq('course_date', today)
+        .order('created_at', { ascending: false })
+      if (c) setTodayCourses(c)
+      const { data: d } = await supabase.from('diaries').select('*')
+        .order('created_at', { ascending: false }).limit(3)
+      if (d) setRecentDiaries(d)
+    } catch {}
   }
 
   const containerHeight = members.length === 0 ? 0
