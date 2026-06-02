@@ -4,7 +4,7 @@ import { supabase } from '../supabase'
 import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus } from '@phosphor-icons/react'
 import DiaryCard from '../components/DiaryCard'
 import { getMemberImage } from '../memberImages'
-import { ACCESSORY_LIST, loadOutfit, saveOutfit } from '../outfitUtils'
+import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit } from '../outfitUtils'
 
 const CHAR_W = 140
 const CHAR_H = 190
@@ -21,6 +21,7 @@ export default function MemberProfile() {
   const [editName, setEditName] = useState('')
   const [saving, setSaving] = useState(false)
   const [showDressUp, setShowDressUp] = useState(false)
+  const [activeCat, setActiveCat] = useState(CAT_NAMES[0])
   const [outfit, setOutfit] = useState([])
   const outfitRef = useRef([])
   const [selIdx, setSelIdx] = useState(null)
@@ -326,13 +327,35 @@ export default function MemberProfile() {
               </p>
             )}
 
+            {/* 分类标签 */}
+            <div style={{
+              display: 'flex', gap: 3, marginBottom: 8,
+              flexWrap: 'wrap', justifyContent: 'center',
+            }}>
+              {CAT_NAMES.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCat(cat)}
+                  style={{
+                    fontSize: 11, padding: '3px 8px',
+                    borderRadius: 10, border: 'none',
+                    background: activeCat === cat ? 'var(--color-brand-primary)' : 'var(--color-surface-card)',
+                    color: activeCat === cat ? '#fff' : 'var(--color-text-secondary)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
             {/* 配饰选择器 */}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
               gap: 4,
             }}>
-              {ACCESSORY_LIST.map((emoji) => (
+              {ACCESSORY_CATS[activeCat].map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => handleAddAccessory(emoji)}
