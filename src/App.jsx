@@ -1,5 +1,6 @@
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, useParams } from 'react-router-dom'
 import BottomNav from './components/BottomNav'
+import ErrorBoundary from './components/ErrorBoundary'
 import HomePage from './pages/HomePage'
 import SchedulePage from './pages/SchedulePage'
 import DiaryPage from './pages/DiaryPage'
@@ -7,6 +8,15 @@ import ShowcasePage from './pages/ShowcasePage'
 import MemberProfile from './pages/MemberProfile'
 import SearchPage from './pages/SearchPage'
 import XiaoWan from './components/XiaoWan'
+
+function ProfileGuard() {
+  const { id } = useParams()
+  return (
+    <ErrorBoundary resetKey={id}>
+      <MemberProfile />
+    </ErrorBoundary>
+  )
+}
 
 export default function App() {
   return (
@@ -18,12 +28,12 @@ export default function App() {
         </header>
 
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/schedule" element={<SchedulePage />} />
-          <Route path="/diary" element={<DiaryPage />} />
-          <Route path="/showcase" element={<ShowcasePage />} />
-          <Route path="/member/:id" element={<MemberProfile />} />
-          <Route path="/search" element={<SearchPage />} />
+          <Route path="/" element={<ErrorBoundary><HomePage /></ErrorBoundary>} />
+          <Route path="/schedule" element={<ErrorBoundary><SchedulePage /></ErrorBoundary>} />
+          <Route path="/diary" element={<ErrorBoundary><DiaryPage /></ErrorBoundary>} />
+          <Route path="/showcase" element={<ErrorBoundary><ShowcasePage /></ErrorBoundary>} />
+          <Route path="/member/:id" element={<ProfileGuard />} />
+          <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
         </Routes>
 
         <BottomNav />

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus, Minus } from '@phosphor-icons/react'
 import DiaryCard from '../components/DiaryCard'
+import ErrorBoundary from '../components/ErrorBoundary'
 import { getMemberImage } from '../memberImages'
 import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit, ACC_FONT_RATIO } from '../outfitUtils'
 

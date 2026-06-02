@@ -77,7 +77,16 @@ export async function fetchSharedState() {
     const { data } = await supabase.from('shared_state').select('*')
     if (data) {
       for (const row of data) {
-        try { localStorage.setItem(row.key, row.value) } catch {}
+        try {
+          // 映射key：outfit_xxx → rongyu_outfit2_xxx, canvas_xxx → rongyu_canvas_xxx
+          let localKey = row.key
+          if (localKey.startsWith('outfit_')) {
+            localKey = 'rongyu_outfit2_' + localKey.slice(7)
+          } else if (localKey.startsWith('canvas_')) {
+            localKey = 'rongyu_canvas_' + localKey.slice(7)
+          }
+          localStorage.setItem(localKey, row.value)
+        } catch {}
       }
     }
   } catch {}
