@@ -5,11 +5,12 @@ export default function AccessoryRenderer({ items, containerWidth }) {
   const baseFont = Math.round(containerWidth * ACC_FONT_RATIO)
 
   return items.map((item, i) => {
-    const x = item.x != null ? item.x : 50
-    const y = item.y != null ? item.y : 20
-    const s = item.s != null ? item.s : 1
-    const r = item.r != null ? item.r : 0
-    const o = item.o != null ? item.o : 1
+    const x = item.x ?? 50
+    const y = item.y ?? 20
+    const s = item.s ?? 1
+    const r = item.r ?? 0
+    const o = item.o ?? 1
+    const b = item.b ?? 0
 
     return (
       <div
@@ -24,6 +25,8 @@ export default function AccessoryRenderer({ items, containerWidth }) {
           pointerEvents: 'none',
           opacity: o,
           userSelect: 'none',
+          clipPath: b > 0 ? `inset(0 0 ${b}% 0)` : undefined,
+          overflow: 'hidden',
         }}
       >
         {item.e}

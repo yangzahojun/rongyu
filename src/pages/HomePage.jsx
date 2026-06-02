@@ -30,8 +30,10 @@ export default function HomePage() {
   const [recentDiaries, setRecentDiaries] = useState([])
   const [todayCourses, setTodayCourses] = useState([])
   const [dragging, setDragging] = useState(null)
+  const dragRef = useRef(null)
   const containerRef = useRef(null)
   const offsetRef = useRef({ x: 0, y: 0 })
+  const sizesRef = useRef({})
   const device = getDevice()
 
   useEffect(() => { fetchAll() }, [])
@@ -88,10 +90,6 @@ export default function HomePage() {
     if (d) setRecentDiaries(d)
   }
 
-  const persist = (pos, sz) => {
-    saveCanvasState({ positions: pos, sizes: sz })
-  }
-
   const containerHeight = members.length === 0 ? 0
     : Math.max(...members.map((m) => {
         const w = sizes[m.name] || DEFAULT_MEMBER_SIZE
@@ -102,32 +100,39 @@ export default function HomePage() {
   // --- 拖动 ---
   const handlePointerDown = (e, memberName) => {
     e.preventDefault()
+    dragRef.current = memberName
+    setDragging(memberName)
     const rect = containerRef.current.getBoundingClientRect()
     const pos = positions[memberName] || { x: 0, y: 0 }
     offsetRef.current = {
       x: e.clientX - rect.left - pos.x,
       y: e.clientY - rect.top - pos.y,
     }
-    setDragging(memberName)
   }
 
   const handlePointerMove = useCallback((e) => {
-    if (!dragging) return
+    const name = dragRef.current
+    if (!name) return
     const rect = containerRef.current.getBoundingClientRect()
     const newX = Math.max(0, e.clientX - rect.left - offsetRef.current.x)
     const newY = Math.max(0, e.clientY - rect.top - offsetRef.current.y)
-    setPositions((prev) => ({ ...prev, [dragging]: { x: newX, y: newY } }))
-  }, [dragging])
+    setPositions((prev) => ({ ...prev, [name]: { x: newX, y: newY } }))
+  }, [])
 
   const handlePointerUp = useCallback(() => {
-    if (!dragging) return
+    const name = dragRef.current
+    if (!name) return
     setPositions((prev) => {
-      const key = getDevice()
-      persist(prev, sizes)
+      saveCanvasState({ positions: prev, sizes: sizesRef.current })
       return prev
     })
+    dragRef.current = null
     setDragging(null)
-  }, [dragging, sizes])
+  }, [])
+
+  useEffect(() => {
+    sizesRef.current = sizes
+  }, [sizes])
 
   useEffect(() => {
     if (dragging) {
