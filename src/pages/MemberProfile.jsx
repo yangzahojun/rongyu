@@ -125,14 +125,18 @@ export default function MemberProfile() {
     saveOutfit(member.name, next)
   }
 
+  const dragElRef = useRef(null)
+
   const handlePointerDownItem = (e, idx) => {
     e.stopPropagation()
     e.preventDefault()
     const el = e.currentTarget
     el.setPointerCapture(e.pointerId)
+    dragElRef.current = el
     setSelIdx(idx)
     selIdxRef.current = idx
     setDragging(true)
+
     const rect = charRef.current.getBoundingClientRect()
     const item = outfitRef.current[idx]
     dragOffRef.current = {
@@ -145,24 +149,38 @@ export default function MemberProfile() {
     const idx = selIdxRef.current
     if (idx == null) return
     e.preventDefault()
+
     const rect = charRef.current.getBoundingClientRect()
     const px = e.clientX - dragOffRef.current.x
     const py = e.clientY - dragOffRef.current.y
     const x = Math.round(Math.max(0, Math.min(100, (px / rect.width) * 100)))
     const y = Math.round(Math.max(0, Math.min(100, (py / rect.height) * 100)))
+
+    // 直接操作DOM，不触发React重渲染
+    const el = dragElRef.current
+    if (el) {
+      el.style.left = `${x}%`
+      el.style.top = `${y}%`
+    }
+
+    // 更新ref供mouseup保存
     const next = outfitRef.current.map((item, i) => {
       if (i !== idx) return item
       return { ...item, x, y }
     })
     outfitRef.current = next
-    setOutfit(next)
   }
 
   const handlePointerUpItem = (e) => {
     e.preventDefault()
-    const el = e.currentTarget
-    el.releasePointerCapture(e.pointerId)
+    const el = dragElRef.current
+    if (el) {
+      el.releasePointerCapture(e.pointerId)
+      dragElRef.current = null
+    }
     if (selIdxRef.current != null) {
+      // 提交最终位置到React state
+      setOutfit([...outfitRef.current])
       saveOutfit(member?.name, outfitRef.current)
     }
     setDragging(false)
