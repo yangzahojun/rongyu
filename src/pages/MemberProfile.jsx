@@ -153,8 +153,34 @@ export default function MemberProfile() {
     }
   }
 
-  // --- 拖动（完全零state，零重渲染） ---
-  // --- 拖动（window级事件，元素级pointerdown，零state重渲染） ---
+  // --- 裁剪手柄拖动 ---
+  const clipDrag = useRef({ edge: null, startVal: 0, startPos: 0 })
+
+  const onClipDown = useCallback((e, edge) => {
+    e.preventDefault(); e.stopPropagation()
+    clipDrag.current = {
+      edge,
+      startVal: (outfitRef.current[selRef.current] || {})[edge] || 0,
+      startPos: edge === 'ct' || edge === 'cb' ? e.clientY : e.clientX,
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }, [])
+
+  const onClipMove = useCallback((e) => {
+    if (!clipDrag.current.edge) return
+    e.preventDefault()
+    const { edge, startVal, startPos } = clipDrag.current
+    const delta = (edge === 'ct' || edge === 'cb' ? e.clientY - startPos : e.clientX - startPos) / 2
+    // 上/左向内拖=正delta=增加clip, 下/右向内拖=负delta=增加clip
+    const sign = (edge === 'ct' || edge === 'cl') ? 1 : -1
+    const val = Math.round(Math.max(0, Math.min(80, startVal + delta * sign)))
+    modSel(it => ({ ...it, [edge]: val }))
+  }, [])
+
+  const onClipUp = useCallback((e) => {
+    clipDrag.current = { edge: null, startVal: 0, startPos: 0 }
+    if (e.currentTarget.releasePointerCapture) e.currentTarget.releasePointerCapture(e.pointerId)
+  }, [])
   const onPointerDown = useCallback((e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -338,24 +364,36 @@ export default function MemberProfile() {
                   <button onClick={()=>modSel(it=>({...it,o:Math.round(Math.min(1,(it.o||1)+0.1)*10)/10}))} style={css.btn}><Plus size={10}/></button>
                   <button onClick={handleRemoveSelected} style={{ ...css.btn,color:'#E74C3C',borderColor:'#E74C3C',marginLeft:8 }}>删除</button>
                 </div>
-                {/* 行2: 四边裁剪 */}
-                <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:3,flexWrap:'wrap' }}>
-                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>上</span>
-                  <button onClick={()=>modSel(it=>({...it,ct:Math.max(0,(it.ct||0)-5)}))} style={css.btn}><Minus size={10}/></button>
-                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.ct||0}%</span>
-                  <button onClick={()=>modSel(it=>({...it,ct:Math.min(90,(it.ct||0)+5)}))} style={css.btn}><Plus size={10}/></button>
-                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>右</span>
-                  <button onClick={()=>modSel(it=>({...it,cr:Math.max(0,(it.cr||0)-5)}))} style={css.btn}><Minus size={10}/></button>
-                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.cr||0}%</span>
-                  <button onClick={()=>modSel(it=>({...it,cr:Math.min(90,(it.cr||0)+5)}))} style={css.btn}><Plus size={10}/></button>
-                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>下</span>
-                  <button onClick={()=>modSel(it=>({...it,cb:Math.max(0,(it.cb||0)-5)}))} style={css.btn}><Minus size={10}/></button>
-                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.cb||0}%</span>
-                  <button onClick={()=>modSel(it=>({...it,cb:Math.min(90,(it.cb||0)+5)}))} style={css.btn}><Plus size={10}/></button>
-                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>左</span>
-                  <button onClick={()=>modSel(it=>({...it,cl:Math.max(0,(it.cl||0)-5)}))} style={css.btn}><Minus size={10}/></button>
-                  <span style={{ ...css.val,minWidth:22 }}>{localSelItem.cl||0}%</span>
-                  <button onClick={()=>modSel(it=>({...it,cl:Math.min(90,(it.cl||0)+5)}))} style={css.btn}><Plus size={10}/></button>
+                {/* 行2: 可视化裁剪（拖拽边缘） */}
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:8 }}>
+                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>裁剪(拖边缘):</span>
+                  <div style={{
+                    position:'relative', width:50, height:50,
+                    border:'2px solid var(--color-brand-primary)',
+                    borderRadius:4, background:'rgba(255,182,193,0.08)',
+                    overflow:'hidden',
+                  }}>
+                    {/* 内部遮罩 */}
+                    <div style={{
+                      position:'absolute',
+                      top:`${localSelItem.ct||0}%`, right:`${localSelItem.cr||0}%`,
+                      bottom:`${localSelItem.cb||0}%`, left:`${localSelItem.cl||0}%`,
+                      background:'rgba(255,182,193,0.15)',
+                      border:'1px dashed var(--color-brand-primary)',
+                    }}/>
+                    {/* 上拖柄 */}
+                    <div onPointerDown={e=>onClipDown(e,'ct')} onPointerMove={onClipMove} onPointerUp={onClipUp} onLostPointerCapture={onClipUp}
+                      style={{ position:'absolute', top:`${(localSelItem.ct||0)/2}%`, left:'50%', transform:'translate(-50%,-50%)', width:'70%', height:8, cursor:'row-resize', background:'var(--color-brand-primary)', borderRadius:4, opacity:0.8, touchAction:'none' }}/>
+                    {/* 下拖柄 */}
+                    <div onPointerDown={e=>onClipDown(e,'cb')} onPointerMove={onClipMove} onPointerUp={onClipUp} onLostPointerCapture={onClipUp}
+                      style={{ position:'absolute', bottom:`${(localSelItem.cb||0)/2}%`, left:'50%', transform:'translate(-50%,50%)', width:'70%', height:8, cursor:'row-resize', background:'var(--color-brand-primary)', borderRadius:4, opacity:0.8, touchAction:'none' }}/>
+                    {/* 左拖柄 */}
+                    <div onPointerDown={e=>onClipDown(e,'cl')} onPointerMove={onClipMove} onPointerUp={onClipUp} onLostPointerCapture={onClipUp}
+                      style={{ position:'absolute', left:`${(localSelItem.cl||0)/2}%`, top:'50%', transform:'translate(-50%,-50%)', width:8, height:'70%', cursor:'col-resize', background:'var(--color-brand-primary)', borderRadius:4, opacity:0.8, touchAction:'none' }}/>
+                    {/* 右拖柄 */}
+                    <div onPointerDown={e=>onClipDown(e,'cr')} onPointerMove={onClipMove} onPointerUp={onClipUp} onLostPointerCapture={onClipUp}
+                      style={{ position:'absolute', right:`${(localSelItem.cr||0)/2}%`, top:'50%', transform:'translate(50%,-50%)', width:8, height:'70%', cursor:'col-resize', background:'var(--color-brand-primary)', borderRadius:4, opacity:0.8, touchAction:'none' }}/>
+                  </div>
                 </div>
               </div>
             )}
