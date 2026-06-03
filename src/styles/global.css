@@ -333,92 +333,52 @@ textarea.input {
   }
 }
 
-/* ===== 人物动作动画（8种，骨架风格） ===== */
+/* ===== 骨架动画：每个身体部件独立运动 ===== */
 
-/* walk：走路 - 脚底pivot，髋部摇摆+弹跳+前倾 */
-@keyframes char-walk {
-  0%   { transform: rotate(-2.5deg) translateY(0) scaleY(1); }
-  12%  { transform: rotate(-1deg) translateY(-5px) scaleY(1.03); }
-  25%  { transform: rotate(0deg) translateY(-2px) scaleY(1); }
-  37%  { transform: rotate(2.5deg) translateY(0) scaleY(1.02); }
-  50%  { transform: rotate(1deg) translateY(-4px) scaleY(1); }
-  62%  { transform: rotate(0deg) translateY(-1px) scaleY(1.01); }
-  75%  { transform: rotate(-2deg) translateY(0) scaleY(1); }
-  87%  { transform: rotate(-3deg) translateY(-5px) scaleY(1.02); }
-  100% { transform: rotate(-2.5deg) translateY(0) scaleY(1); }
+/* 左臂 — 肩关节 pivot，像走路摆臂 */
+@keyframes puppet-arm-l {
+  0%,100% { transform: rotate(var(--swing,6deg)); }
+  25%    { transform: rotate(0deg); }
+  50%    { transform: rotate(calc(var(--swing,6deg) * -1)); }
+  75%    { transform: rotate(0deg); }
 }
 
-/* wave：招手 - 右肩pivot，快速左右扇动+微弹 */
-@keyframes char-wave {
-  0%, 100% { transform: rotate(-3deg) translateY(0); }
-  8%  { transform: rotate(6deg) translateY(-3px); }
-  16% { transform: rotate(-5deg) translateY(-5px); }
-  24% { transform: rotate(7deg) translateY(-2px); }
-  32% { transform: rotate(-4deg) translateY(-6px); }
-  40% { transform: rotate(5deg) translateY(-3px); }
-  48% { transform: rotate(-6deg) translateY(-4px); }
-  55% { transform: rotate(2deg) translateY(-1px); }
-  62% { transform: rotate(-1deg) translateY(-2px); }
-  70% { transform: rotate(0deg) translateY(0); }
-  100%{ transform: rotate(0deg) translateY(0); }
+/* 右臂 — 反相摆臂 */
+@keyframes puppet-arm-r {
+  0%,100% { transform: rotate(calc(var(--swing,6deg) * -1)); }
+  25%    { transform: rotate(0deg); }
+  50%    { transform: rotate(var(--swing,6deg)); }
+  75%    { transform: rotate(0deg); }
 }
 
-/* nod：点头 - 颈部pivot，rotateX前后倾 */
-@keyframes char-nod {
-  0%, 100% { transform: rotateX(0deg) translateY(0); }
-  20% { transform: rotateX(5deg) translateY(-2px); }
-  35% { transform: rotateX(3deg) translateY(-3px); }
-  50% { transform: rotateX(-2deg) translateY(-1px); }
-  65% { transform: rotateX(4deg) translateY(-3px); }
-  80% { transform: rotateX(-1deg) translateY(0); }
+/* 左腿 — 髋关节 pivot，像走路跨步 */
+@keyframes puppet-leg-l {
+  0%,100% { transform: rotate(calc(var(--swing,5deg) * -1)); }
+  25%    { transform: rotate(0deg); }
+  50%    { transform: rotate(var(--swing,5deg)); }
+  75%    { transform: rotate(0deg); }
 }
 
-/* jump：跳跃 - 脚底pivot，预蹲→爆发→滞空→落地缓冲(squash&stretch) */
-@keyframes char-jump {
-  0%, 70%, 100% { transform: scale(1, 1) translateY(0); }
-  73% { transform: scale(0.92, 1.08) translateY(2px); }
-  78% { transform: scale(1.08, 0.9) translateY(-18px) rotate(-2deg); }
-  83% { transform: scale(1.04, 0.95) translateY(-20px) rotate(1deg); }
-  88% { transform: scale(0.94, 1.06) translateY(0); }
-  93% { transform: scale(1, 1) translateY(-4px); }
-  96% { transform: scale(1.01, 0.99) translateY(0); }
+/* 右腿 — 反相跨步 */
+@keyframes puppet-leg-r {
+  0%,100% { transform: rotate(var(--swing,5deg)); }
+  25%    { transform: rotate(0deg); }
+  50%    { transform: rotate(calc(var(--swing,5deg) * -1)); }
+  75%    { transform: rotate(0deg); }
 }
 
-/* idle：待机 - 髋部pivot，微重心转移+呼吸 */
-@keyframes char-idle {
-  0%, 100% { transform: rotate(-1deg) translateY(0) scale(1); }
-  30% { transform: rotate(0.5deg) translateY(-3px) scale(1.02); }
-  60% { transform: rotate(1deg) translateY(-1px) scale(1.01); }
-  85% { transform: rotate(-0.5deg) translateY(-2px) scale(1.015); }
+/* 头 — 颈关节 pivot，rotateX 点头 */
+@keyframes puppet-nod {
+  0%,100% { transform: rotateX(0deg); }
+  25%    { transform: rotateX(var(--nod,5deg)); }
+  50%    { transform: rotateX(0deg); }
+  75%    { transform: rotateX(calc(var(--nod,5deg) * -0.5)); }
 }
 
-/* swing：摇摆(像听歌晃) - 脚底pivot，大弧度左右摆 */
-@keyframes char-swing {
-  0%, 100% { transform: rotate(-4deg) translateY(-2px); }
-  20% { transform: rotate(-2deg) translateY(-5px); }
-  40% { transform: rotate(1deg) translateY(-1px); }
-  60% { transform: rotate(4deg) translateY(-5px); }
-  80% { transform: rotate(2deg) translateY(-2px); }
-}
-
-/* stretch：伸展(打哈欠) - 中心pivot，上伸+后仰+舒展 */
-@keyframes char-stretch {
-  0%, 100% { transform: scale(1) rotate(0deg) translateY(0); }
-  25% { transform: scale(1.03, 0.98) rotate(-1deg) translateY(-1px); }
-  50% { transform: scale(1.06, 0.95) rotate(-2deg) translateY(-6px); }
-  70% { transform: scale(1.04, 0.97) rotate(-1deg) translateY(-3px); }
-  85% { transform: scale(1, 1) rotate(0deg) translateY(0); }
-}
-
-/* bounce：弹跳(开心跳) - 脚底pivot，连续小跳 */
-@keyframes char-bounce {
-  0%, 40%, 100% { transform: scale(1, 1) translateY(0); }
-  10% { transform: scale(0.97, 1.03) translateY(2px) rotate(-1deg); }
-  25% { transform: scale(1.05, 0.94) translateY(-10px) rotate(0deg); }
-  35% { transform: scale(1, 1) translateY(-2px) rotate(1deg); }
-  52% { transform: scale(0.98, 1.02) translateY(1px) rotate(-1deg); }
-  65% { transform: scale(1.06, 0.93) translateY(-8px) rotate(0deg); }
-  72% { transform: scale(1, 1) translateY(-1px); }
+/* 躯干 — 髋部 pivot，微呼吸缩放 */
+@keyframes puppet-breathe {
+  0%,100% { transform: scale(1); }
+  50%    { transform: scale(1.015); }
 }
 
 /* ===== 粒子特效 ===== */
