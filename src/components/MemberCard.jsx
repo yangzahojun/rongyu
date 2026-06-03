@@ -7,25 +7,19 @@ import AccessoryRenderer from './AccessoryRenderer'
 
 const LOCAL_PROFILES = new Set(['丁老师', '王静怡'])
 
-// 每个名字hash到一个主动画+随机延迟+偶尔跳动画
+// 每个人物分配一组具体动作（按名字hash稳定）
 export function getAnimConfig(name) {
   let h = 0
   for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0
   const abs = Math.abs(h)
-  const types = ['float', 'sway', 'bounce', 'breathe', 'wiggle']
-  const type = types[abs % types.length]
-  const dur = 2.5 + (abs % 15) * 0.1 // 2.5s ~ 4s
-  const delay = (abs % 12) * 0.3 // 0 ~ 3.6s 随机相位
-  const hopDelay = 8 + (abs % 12) // 8s ~ 20s 偶尔跳一下
-  return { type, dur, delay, hopDelay }
-}
-
-const ANIM_KEYFRAMES = {
-  float:    { primary: 'char-float', twinkle: 'none', hop: 'none' },
-  sway:     { primary: 'char-sway', twinkle: 'none', hop: 'none' },
-  bounce:   { primary: 'char-bounce', twinkle: 'none', hop: 'none' },
-  breathe:  { primary: 'char-breathe', twinkle: 'char-twinkle', hop: 'none' },
-  wiggle:   { primary: 'char-wiggle', twinkle: 'char-twinkle', hop: 'none' },
+  const actions = [
+    { name: 'walk',   dur: 3 + (abs % 10) * 0.2, delay: (abs % 8) * 0.5 },
+    { name: 'wave',   dur: 4 + (abs % 6) * 0.3, delay: 1 + (abs % 5) * 0.7 },
+    { name: 'nod',    dur: 2 + (abs % 8) * 0.15, delay: 0.5 + (abs % 4) * 0.6 },
+    { name: 'jump',   dur: 5 + (abs % 7) * 0.4, delay: 2 + (abs % 6) * 0.8 },
+    { name: 'idle',   dur: 2.5 + (abs % 10) * 0.2, delay: (abs % 7) * 0.4 },
+  ]
+  return actions
 }
 
 export default function MemberCard({ member, size, style, onPointerDown, isDragging }) {
@@ -38,7 +32,6 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
   const charW = size || 75
   const charH = charW * (4/3)
   const animCfg = getAnimConfig(member.name)
-  const keys = ANIM_KEYFRAMES[animCfg.type]
   const moved = useRef(false)
 
   const handlePointerDown = (e) => {
@@ -51,15 +44,11 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
     if (hasProfile) navigate(`/member/${member.id}`)
   }
 
-  // 非拖动时播放动画
-  const animStyle = isDragging ? {} : {
-    animationName: `${keys.primary}, char-hop`,
-    animationDuration: `${animCfg.dur}s, 0.4s`,
-    animationDelay: `${animCfg.delay}s, ${animCfg.hopDelay}s`,
-    animationIterationCount: 'infinite, infinite',
-    animationTimingFunction: 'ease-in-out, ease-out',
-    transformOrigin: 'bottom center',
-  }
+  // 构建复合动画字符串
+  const animStr = isDragging ? 'none' : animCfg.map((a, i) => {
+    const name = `char-${a.name}-${(i % 3)}`
+    return `${name} ${a.dur}s ease-in-out ${a.delay}s infinite`
+  }).join(', ')
 
   return (
     <div
@@ -86,7 +75,7 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
         width: charW, height: charH,
         position: 'relative', overflow: 'visible',
         pointerEvents: 'none',
-        ...animStyle,
+        animation: animStr,
       }}>
         {avatarSrc ? (
           <img
@@ -98,6 +87,7 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
               objectFit: 'contain',
               objectPosition: 'bottom center',
               position: 'relative', zIndex: 1,
+              animation: isDragging ? 'none' : `char-breathe-sub ${2.8 + (charW % 5) * 0.2}s ease-in-out infinite`,
             }}
           />
         ) : (
