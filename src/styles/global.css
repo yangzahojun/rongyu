@@ -333,55 +333,20 @@ textarea.input {
   }
 }
 
-/* ===== 骨架动画：每个身体部件独立运动 ===== */
-
-/* 左臂 — 肩关节 pivot，像走路摆臂 */
-@keyframes puppet-arm-l {
-  0%,100% { transform: rotate(var(--swing,6deg)); }
-  25%    { transform: rotate(0deg); }
-  50%    { transform: rotate(calc(var(--swing,6deg) * -1)); }
-  75%    { transform: rotate(0deg); }
+/* ===== 轻量人物动画 ===== */
+@keyframes char-float {
+  0%,100% { transform: translateY(0); }
+  50%    { transform: translateY(-4px); }
 }
-
-/* 右臂 — 反相摆臂 */
-@keyframes puppet-arm-r {
-  0%,100% { transform: rotate(calc(var(--swing,6deg) * -1)); }
-  25%    { transform: rotate(0deg); }
-  50%    { transform: rotate(var(--swing,6deg)); }
-  75%    { transform: rotate(0deg); }
+@keyframes char-sway {
+  0%,100% { transform: rotate(-1deg); }
+  50%    { transform: rotate(1deg); }
 }
-
-/* 左腿 — 髋关节 pivot，像走路跨步 */
-@keyframes puppet-leg-l {
-  0%,100% { transform: rotate(calc(var(--swing,5deg) * -1)); }
-  25%    { transform: rotate(0deg); }
-  50%    { transform: rotate(var(--swing,5deg)); }
-  75%    { transform: rotate(0deg); }
-}
-
-/* 右腿 — 反相跨步 */
-@keyframes puppet-leg-r {
-  0%,100% { transform: rotate(var(--swing,5deg)); }
-  25%    { transform: rotate(0deg); }
-  50%    { transform: rotate(calc(var(--swing,5deg) * -1)); }
-  75%    { transform: rotate(0deg); }
-}
-
-/* 头 — 颈关节 pivot，rotateX 点头 */
-@keyframes puppet-nod {
-  0%,100% { transform: rotateX(0deg); }
-  25%    { transform: rotateX(var(--nod,5deg)); }
-  50%    { transform: rotateX(0deg); }
-  75%    { transform: rotateX(calc(var(--nod,5deg) * -0.5)); }
-}
-
-/* 躯干 — 髋部 pivot，微呼吸缩放 */
-@keyframes puppet-breathe {
+@keyframes char-breathe {
   0%,100% { transform: scale(1); }
-  50%    { transform: scale(1.015); }
+  50%    { transform: scale(1.02); }
 }
 
-/* ===== 粒子特效 ===== */
 @keyframes particle-drift {
   0% { transform: translate(0, 0) rotate(0deg) scale(0.3); opacity: 0; }
   15% { opacity: 0.6; transform: translate(10px, -20px) rotate(30deg) scale(1); }

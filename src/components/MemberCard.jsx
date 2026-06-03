@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import SkeletalAnim from './SkeletalAnim'
+import CharacterAnim from './CharacterAnim'
 
 const LOCAL_PROFILES = new Set(['丁老师', '王静怡'])
 
@@ -42,7 +42,7 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
         ...style,
       }}
     >
-      <SkeletalAnim member={member} size={charW} isDragging={isDragging} />
+      <CharacterAnim member={member} size={charW} isDragging={isDragging} />
       <div style={{ fontSize: 12, fontWeight: 500, marginTop: 4, pointerEvents: 'none', userSelect: 'none' }}>
         {member.name}
       </div>
