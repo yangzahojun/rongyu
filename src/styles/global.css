@@ -340,31 +340,69 @@ textarea.input {
 }
 
 @keyframes char-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-8px) scale(1.02); }
+  60% { transform: translateY(-3px) scale(1.01); }
 }
 
 @keyframes char-sway {
-  0%, 100% { transform: rotate(-2deg); }
-  50% { transform: rotate(2deg); }
+  0%, 100% { transform: rotate(-1.5deg) translateY(0); }
+  25% { transform: rotate(0deg) translateY(-4px); }
+  50% { transform: rotate(1.5deg) translateY(-2px); }
+  75% { transform: rotate(0.5deg) translateY(-5px); }
 }
 
 @keyframes char-bounce {
-  0%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-8px); }
-  50% { transform: translateY(0); }
-  70% { transform: translateY(-4px); }
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  15% { transform: translateY(-12px) scale(1.05, 0.95); }
+  30% { transform: translateY(0) scale(0.97, 1.03); }
+  45% { transform: translateY(-6px) scale(1.02, 0.98); }
+  60% { transform: translateY(0) scale(1, 1); }
 }
 
 @keyframes char-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.03); }
+  0%, 100% { transform: scale(1) translateY(0); }
+  30% { transform: scale(1.04) translateY(-3px); }
+  60% { transform: scale(1.02) translateY(-1px); }
 }
 
 @keyframes char-wiggle {
-  0%, 100% { transform: rotate(0deg) translateY(0); }
-  25% { transform: rotate(-1.5deg) translateY(-3px); }
-  75% { transform: rotate(1.5deg) translateY(-3px); }
+  0%, 100% { transform: rotate(0deg) translateY(0) scale(1); }
+  20% { transform: rotate(-2deg) translateY(-5px) scale(1.03); }
+  40% { transform: rotate(1deg) translateY(-2px); }
+  60% { transform: rotate(2deg) translateY(-6px) scale(1.02); }
+  80% { transform: rotate(-1deg) translateY(-3px); }
+}
+
+@keyframes char-hop {
+  0%, 90%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  92% { transform: translateY(-3px) rotate(-2deg) scale(1.05); }
+  95% { transform: translateY(-15px) rotate(2deg) scale(1.08); }
+  97% { transform: translateY(-4px) rotate(-1deg) scale(0.95); }
+}
+
+/* 头饰微动 */
+@keyframes acc-head {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-3deg) translateY(0); }
+  50% { transform: translate(-50%, -50%) rotate(3deg) translateY(-2px); }
+}
+
+/* 手持微动 */
+@keyframes acc-hand {
+  0%, 100% { transform: translate(-50%, -50%) rotate(-2deg) scale(1); }
+  50% { transform: translate(-50%, -50%) rotate(2deg) scale(1.05); }
+}
+
+/* 眼镜头饰旋转 */
+@keyframes acc-glasses {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  50% { transform: translate(-50%, -50%) translateY(-1px); }
+}
+
+/* 偶尔闪动 */
+@keyframes char-twinkle {
+  0%, 94%, 96%, 100% { opacity: 1; }
+  95% { opacity: 0.85; }
 }
 
 @keyframes sparkle-up {

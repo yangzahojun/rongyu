@@ -7,21 +7,25 @@ import AccessoryRenderer from './AccessoryRenderer'
 
 const LOCAL_PROFILES = new Set(['丁老师', '王静怡'])
 
-// 从名字hash得到稳定动画类型
-export const ANIM_TYPES = ['float', 'sway', 'bounce', 'breathe', 'wiggle']
-
-export function getAnimType(name) {
+// 每个名字hash到一个主动画+随机延迟+偶尔跳动画
+export function getAnimConfig(name) {
   let h = 0
   for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0
-  return ANIM_TYPES[Math.abs(h) % ANIM_TYPES.length]
+  const abs = Math.abs(h)
+  const types = ['float', 'sway', 'bounce', 'breathe', 'wiggle']
+  const type = types[abs % types.length]
+  const dur = 2.5 + (abs % 15) * 0.1 // 2.5s ~ 4s
+  const delay = (abs % 12) * 0.3 // 0 ~ 3.6s 随机相位
+  const hopDelay = 8 + (abs % 12) // 8s ~ 20s 偶尔跳一下
+  return { type, dur, delay, hopDelay }
 }
 
-const ANIM_CSS = {
-  float: { animation: 'char-float 3s ease-in-out infinite' },
-  sway: { animation: 'char-sway 3.5s ease-in-out infinite', transformOrigin: 'bottom center' },
-  bounce: { animation: 'char-bounce 2.8s ease-in-out infinite' },
-  breathe: { animation: 'char-breathe 3.2s ease-in-out infinite' },
-  wiggle: { animation: 'char-wiggle 3s ease-in-out infinite', transformOrigin: 'bottom center' },
+const ANIM_KEYFRAMES = {
+  float:    { primary: 'char-float', twinkle: 'none', hop: 'none' },
+  sway:     { primary: 'char-sway', twinkle: 'none', hop: 'none' },
+  bounce:   { primary: 'char-bounce', twinkle: 'none', hop: 'none' },
+  breathe:  { primary: 'char-breathe', twinkle: 'char-twinkle', hop: 'none' },
+  wiggle:   { primary: 'char-wiggle', twinkle: 'char-twinkle', hop: 'none' },
 }
 
 export default function MemberCard({ member, size, style, onPointerDown, isDragging }) {
@@ -30,27 +34,37 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
   const avatarSrc = localImage || member.avatar_url
   const isLocal = typeof member.id === 'string' && member.id.startsWith('local-')
   const hasProfile = !isLocal || LOCAL_PROFILES.has(member.name)
-  const movedRef = useRef(false)
   const outfit = loadOutfit(member.name)
   const charW = size || 75
   const charH = charW * (4/3)
-  const animType = getAnimType(member.name)
-  const anim = isDragging ? {} : ANIM_CSS[animType]
+  const animCfg = getAnimConfig(member.name)
+  const keys = ANIM_KEYFRAMES[animCfg.type]
+  const moved = useRef(false)
 
   const handlePointerDown = (e) => {
-    movedRef.current = false
+    moved.current = false
     onPointerDown(e)
   }
 
   const handleClick = () => {
-    if (movedRef.current) return
+    if (moved.current) return
     if (hasProfile) navigate(`/member/${member.id}`)
+  }
+
+  // 非拖动时播放动画
+  const animStyle = isDragging ? {} : {
+    animationName: `${keys.primary}, char-hop`,
+    animationDuration: `${animCfg.dur}s, 0.4s`,
+    animationDelay: `${animCfg.delay}s, ${animCfg.hopDelay}s`,
+    animationIterationCount: 'infinite, infinite',
+    animationTimingFunction: 'ease-in-out, ease-out',
+    transformOrigin: 'bottom center',
   }
 
   return (
     <div
       onPointerDown={handlePointerDown}
-      onPointerMove={() => { movedRef.current = true }}
+      onPointerMove={() => { moved.current = true }}
       onClick={handleClick}
       role="button"
       tabIndex={hasProfile ? 0 : -1}
@@ -72,7 +86,7 @@ export default function MemberCard({ member, size, style, onPointerDown, isDragg
         width: charW, height: charH,
         position: 'relative', overflow: 'visible',
         pointerEvents: 'none',
-        ...anim,
+        ...animStyle,
       }}>
         {avatarSrc ? (
           <img
