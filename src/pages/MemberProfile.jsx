@@ -5,6 +5,7 @@ import { CaretLeft, User, PencilSimple, Trash, Calendar, BookOpen, TShirt, Plus,
 import DiaryCard from '../components/DiaryCard'
 import { getMemberImage } from '../memberImages'
 import { ACCESSORY_CATS, CAT_NAMES, loadOutfit, saveOutfit, ACC_FONT_RATIO, loadCanvasState, saveCanvasState, DEFAULT_MEMBER_SIZE, onSharedStateChange } from '../outfitUtils'
+import { SVG_CLOTHING, SVG_CLOTHING_CATS, SVG_CAT_NAMES, SVG_NAMES } from '../svgClothing'
 
 const CHAR_W = 140
 const CHAR_H = 190
@@ -22,6 +23,8 @@ export default function MemberProfile() {
   const [saving, setSaving] = useState(false)
   const [showDressUp, setShowDressUp] = useState(false)
   const [activeCat, setActiveCat] = useState(CAT_NAMES[0])
+  const [activeSvgCat, setActiveSvgCat] = useState(SVG_CAT_NAMES[0])
+  const [showSvgMode, setShowSvgMode] = useState(false)
   const [outfit, setOutfit] = useState([])
   const [selIdx, setSelIdx] = useState(null)
   const [charZoom, setCharZoom] = useState(1)
@@ -116,11 +119,19 @@ export default function MemberProfile() {
     setOutfit([...final])
   }
 
-  const handleAddAccessory = (emoji) => {
-    const item = { e: emoji, x: 50, y: 20, s: 1, r: 0, o: 1 }
-    const n = [...outfitRef.current, item]
-    persistOutfit(n)
-    setSelIdx(n.length - 1)
+  const handleAddAccessory = (key) => {
+    // SVG服装 or emoji?
+    if (key.length > 3 && SVG_CLOTHING[key]) {
+      const item = { sv: key, x: 50, y: 35, s: 1.2, r: 0, o: 0.9 }
+      const n = [...outfitRef.current, item]
+      persistOutfit(n)
+      setSelIdx(n.length - 1)
+    } else {
+      const item = { e: key, x: 50, y: 20, s: 1, r: 0, o: 1 }
+      const n = [...outfitRef.current, item]
+      persistOutfit(n)
+      setSelIdx(n.length - 1)
+    }
   }
 
   const handleRemoveSelected = () => {
@@ -334,7 +345,9 @@ export default function MemberProfile() {
                   clipPath:hc?`inset(${t}% ${r}% ${b}% ${l}%)`:undefined,
                   overflow:hc?'hidden':undefined,
                   filter:isSel?'drop-shadow(0 0 6px var(--color-brand-primary)) brightness(1.2)':undefined,
-                }}>{item.e}</div>
+                }}>
+                  {item.e || (item.sv && <img src={SVG_CLOTHING[item.sv]} alt="" draggable={false} style={{ width:'100%',height:'100%',pointerEvents:'none' }} />)}
+                </div>
               )
             })}
           </div>
@@ -352,7 +365,12 @@ export default function MemberProfile() {
             {localSelItem && (
               <div style={{ display:'flex',flexDirection:'column',gap:6,marginBottom:10,padding:8,background:'var(--color-surface-card)',borderRadius:10,fontSize:12 }}>
                 <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:4,flexWrap:'wrap' }}>
-                  <span style={{ fontSize:20 }}>{localSelItem.e}</span>
+                  {localSelItem.e ? (
+                    <span style={{ fontSize:20 }}>{localSelItem.e}</span>
+                  ) : (
+                    <img src={SVG_CLOTHING[localSelItem.sv]} alt="" style={{ width:24,height:24,objectFit:'contain' }} />
+                  )}
+                  <span style={{ fontSize:10,color:'var(--color-text-secondary)' }}>{localSelItem.sv ? SVG_NAMES[localSelItem.sv] : ''}</span>
                   <button onClick={()=>modSelCommitted(it=>({...it,s:Math.round(Math.max(0.3,Math.min(3,it.s-0.1))*10)/10}))} style={bs}><Minus size={12}/></button>
                   <span style={vs}>{localSelItem.s}x</span>
                   <button onClick={()=>modSelCommitted(it=>({...it,s:Math.round(Math.min(3,it.s+0.1)*10)/10}))} style={bs}><Plus size={12}/></button>
@@ -382,13 +400,29 @@ export default function MemberProfile() {
               <p style={{ fontSize:11,color:'var(--color-text-secondary)',marginBottom:8 }}>点击下方配饰添加 → 拖动角色身上配饰移动 → 四边裁剪手柄</p>
             )}
 
-            <div style={{ display:'flex',gap:3,marginBottom:8,flexWrap:'wrap',justifyContent:'center' }}>
-              {CAT_NAMES.map(cat => (
+            {/* 模式切换 + 分类标签 */}
+            <div style={{ display:'flex',gap:3,marginBottom:6,flexWrap:'wrap',justifyContent:'center',alignItems:'center' }}>
+              <button onClick={()=>setShowSvgMode(false)} style={{ fontSize:11,padding:'3px 6px',borderRadius:8,border:`1px solid ${showSvgMode?'var(--color-brand-subtle)':'var(--color-brand-primary)'}`,background:showSvgMode?'transparent':'var(--color-brand-primary)',color:showSvgMode?'var(--color-text-secondary)':'#fff',cursor:'pointer' }}>😊表情</button>
+              <button onClick={()=>setShowSvgMode(true)} style={{ fontSize:11,padding:'3px 6px',borderRadius:8,border:`1px solid ${showSvgMode?'var(--color-brand-primary)':'var(--color-brand-subtle)'}`,background:showSvgMode?'var(--color-brand-primary)':'transparent',color:showSvgMode?'#fff':'var(--color-text-secondary)',cursor:'pointer' }}>👚服装</button>
+              <span style={{ width:1,height:18,background:'var(--color-brand-subtle)',margin:'0 2px' }}/>
+              {showSvgMode ? SVG_CAT_NAMES.map(cat => (
+                <button key={cat} onClick={()=>setActiveSvgCat(cat)} style={{ fontSize:11,padding:'3px 8px',borderRadius:10,border:'none',background:activeSvgCat===cat?'var(--color-brand-primary)':'var(--color-surface-card)',color:activeSvgCat===cat?'#fff':'var(--color-text-secondary)',cursor:'pointer' }}>{cat}</button>
+              )) : CAT_NAMES.map(cat => (
                 <button key={cat} onClick={()=>setActiveCat(cat)} style={{ fontSize:11,padding:'3px 8px',borderRadius:10,border:'none',background:activeCat===cat?'var(--color-brand-primary)':'var(--color-surface-card)',color:activeCat===cat?'#fff':'var(--color-text-secondary)',cursor:'pointer' }}>{cat}</button>
               ))}
             </div>
-            <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4 }}>
-              {ACCESSORY_CATS[activeCat].map(e=>(<button key={e} onClick={()=>handleAddAccessory(e)} style={{ aspectRatio:'1',borderRadius:10,border:'1px solid var(--color-brand-subtle)',background:'var(--color-surface-card)',cursor:'pointer',fontSize:22,display:'flex',alignItems:'center',justifyContent:'center' }}>{e}</button>))}
+            {/* 配饰/服装网格 */}
+            <div style={{ display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:4 }}>
+              {showSvgMode
+                ? SVG_CLOTHING_CATS[activeSvgCat].map(key => (
+                    <button key={key} onClick={()=>handleAddAccessory(key)} title={SVG_NAMES[key]} style={{ aspectRatio:'1',borderRadius:10,border:'1px solid var(--color-brand-subtle)',background:'var(--color-surface-card)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:4 }}>
+                      <img src={SVG_CLOTHING[key]} alt={SVG_NAMES[key]} style={{ width:'80%',height:'80%',objectFit:'contain' }} />
+                    </button>
+                  ))
+                : ACCESSORY_CATS[activeCat].map(e=>(
+                    <button key={e} onClick={()=>handleAddAccessory(e)} style={{ aspectRatio:'1',borderRadius:10,border:'1px solid var(--color-brand-subtle)',background:'var(--color-surface-card)',cursor:'pointer',fontSize:22,display:'flex',alignItems:'center',justifyContent:'center' }}>{e}</button>
+                  ))
+              }
             </div>
           </div>
         )}

@@ -1,4 +1,5 @@
 import { ACC_FONT_RATIO } from '../outfitUtils'
+import { SVG_CLOTHING } from '../svgClothing'
 
 export default function AccessoryRenderer({ items, containerWidth }) {
   if (!items || items.length === 0) return null
@@ -7,9 +8,9 @@ export default function AccessoryRenderer({ items, containerWidth }) {
   return items.map((item, i) => {
     const x = item.x ?? 50
     const y = item.y ?? 20
-    const s = item.s ?? 1
-    const r = item.r ?? 0
-    const o = item.o ?? 1
+    const sv = item.s ?? 1
+    const rv = item.r ?? 0
+    const ov = item.o ?? 1
     const ct = item.ct ?? 0
     const cr = item.cr ?? 0
     const cb = item.cb ?? 0
@@ -23,17 +24,23 @@ export default function AccessoryRenderer({ items, containerWidth }) {
           position: 'absolute',
           left: `${x}%`,
           top: `${y}%`,
-          transform: `translate(-50%, -50%) scale(${s}) rotate(${r}deg)`,
-          fontSize: baseFont,
+          transform: `translate(-50%, -50%) scale(${sv}) rotate(${rv}deg)`,
+          fontSize: item.sv ? undefined : baseFont,
+          width: item.sv ? baseFont * 1.8 : undefined,
+          height: item.sv ? baseFont * 1.8 : undefined,
           zIndex: 2,
           pointerEvents: 'none',
-          opacity: o,
+          opacity: ov,
           userSelect: 'none',
           clipPath: hasClip ? `inset(${ct}% ${cr}% ${cb}% ${cl}%)` : undefined,
           overflow: hasClip ? 'hidden' : undefined,
         }}
       >
-        {item.e}
+        {item.sv ? (
+          <img src={SVG_CLOTHING[item.sv]} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }} />
+        ) : (
+          item.e
+        )}
       </div>
     )
   })
