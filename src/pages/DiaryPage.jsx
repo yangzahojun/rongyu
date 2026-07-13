@@ -18,9 +18,42 @@ export default function DiaryPage() {
   const imageInputRef = useRef(null)
   const videoInputRef = useRef(null)
 
+  // 点赞和评论数据：{ [diaryId]: [...] }
+  const [likesByDiary, setLikesByDiary] = useState({})
+  const [commentsByDiary, setCommentsByDiary] = useState({})
+
   useEffect(() => {
     fetchDiaries()
   }, [])
+
+  const fetchAllLikesAndComments = async (diaryIds) => {
+    if (diaryIds.length === 0) return
+    // 并行获取所有点赞和评论
+    const [{ data: allLikes }, { data: allComments }] = await Promise.all([
+      supabase.from('likes').select('*').in('diary_id', diaryIds),
+      supabase.from('comments').select('*').in('diary_id', diaryIds).order('created_at', { ascending: true }),
+    ])
+
+    // 按 diary_id 分组
+    const likesMap = {}
+    const commentsMap = {}
+    for (const id of diaryIds) {
+      likesMap[id] = []
+      commentsMap[id] = []
+    }
+    if (allLikes) {
+      for (const l of allLikes) {
+        if (likesMap[l.diary_id]) likesMap[l.diary_id].push(l)
+      }
+    }
+    if (allComments) {
+      for (const c of allComments) {
+        if (commentsMap[c.diary_id]) commentsMap[c.diary_id].push(c)
+      }
+    }
+    setLikesByDiary(likesMap)
+    setCommentsByDiary(commentsMap)
+  }
 
   const fetchDiaries = async () => {
     setLoading(true)
@@ -28,7 +61,10 @@ export default function DiaryPage() {
       .from('diaries')
       .select('*')
       .order('created_at', { ascending: false })
-    if (data) setDiaries(data)
+    if (data) {
+      setDiaries(data)
+      await fetchAllLikesAndComments(data.map((d) => d.id))
+    }
     setLoading(false)
   }
 
@@ -100,6 +136,72 @@ export default function DiaryPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // ===== 点赞 & 评论回调 =====
+
+  const handleLike = async (diaryId, likerName) => {
+    const { error } = await supabase.from('likes').insert({
+      diary_id: diaryId,
+      liker_name: likerName,
+    })
+    if (error && error.code !== '23505') {
+      // 23505 = 唯一约束冲突（已点赞），忽略
+      console.error('点赞失败:', error)
+      return
+    }
+    // 刷新点赞数据
+    const { data } = await supabase.from('likes').select('*').eq('diary_id', diaryId)
+    setLikesByDiary((prev) => ({ ...prev, [diaryId]: data || [] }))
+  }
+
+  const handleUnlike = async (diaryId, likerName) => {
+    const { error } = await supabase
+      .from('likes')
+      .delete()
+      .eq('diary_id', diaryId)
+      .eq('liker_name', likerName)
+    if (error) {
+      console.error('取消点赞失败:', error)
+      return
+    }
+    const { data } = await supabase.from('likes').select('*').eq('diary_id', diaryId)
+    setLikesByDiary((prev) => ({ ...prev, [diaryId]: data || [] }))
+  }
+
+  const handleComment = async (diaryId, authorName, text) => {
+    const { error } = await supabase.from('comments').insert({
+      diary_id: diaryId,
+      author_name: authorName,
+      content_text: text,
+    })
+    if (error) {
+      console.error('评论失败:', error)
+      alert('评论失败，请重试')
+      return
+    }
+    const { data } = await supabase.from('comments').select('*').eq('diary_id', diaryId).order('created_at', { ascending: true })
+    setCommentsByDiary((prev) => ({ ...prev, [diaryId]: data || [] }))
+  }
+
+  const handleDeleteComment = async (commentId) => {
+    // 先找到该评论的 diary_id
+    let targetDiaryId = null
+    for (const [diaryId, cmts] of Object.entries(commentsByDiary)) {
+      if (cmts.some((c) => c.id === commentId)) {
+        targetDiaryId = parseInt(diaryId)
+        break
+      }
+    }
+    if (!targetDiaryId) return
+
+    const { error } = await supabase.from('comments').delete().eq('id', commentId)
+    if (error) {
+      console.error('删除评论失败:', error)
+      return
+    }
+    const { data } = await supabase.from('comments').select('*').eq('diary_id', targetDiaryId).order('created_at', { ascending: true })
+    setCommentsByDiary((prev) => ({ ...prev, [targetDiaryId]: data || [] }))
   }
 
   return (
@@ -288,6 +390,12 @@ export default function DiaryPage() {
           <DiaryCard
             key={diary.id}
             diary={diary}
+            likes={likesByDiary[diary.id] || []}
+            comments={commentsByDiary[diary.id] || []}
+            onLike={handleLike}
+            onUnlike={handleUnlike}
+            onComment={handleComment}
+            onDeleteComment={handleDeleteComment}
             onEdit={async (id, newText) => {
               await supabase.from('diaries').update({ content_text: newText }).eq('id', id)
               fetchDiaries()

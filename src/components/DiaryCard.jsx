@@ -1,12 +1,49 @@
 import { useState, useEffect } from 'react'
-import { PencilSimple, Trash, DownloadSimple } from '@phosphor-icons/react'
+import { PencilSimple, Trash, DownloadSimple, Heart, ChatCircle, PaperPlaneTilt, X } from '@phosphor-icons/react'
 
-export default function DiaryCard({ diary, onDelete, onEdit }) {
+const LS_NAME_KEY = 'rongyu_my_nickname'
+const LS_LIKED_KEY = 'rongyu_liked_diary_ids'
+
+function getMyName() {
+  return localStorage.getItem(LS_NAME_KEY) || ''
+}
+
+function setMyName(name) {
+  localStorage.setItem(LS_NAME_KEY, name.trim())
+}
+
+function getLikedIds() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_LIKED_KEY) || '[]')
+  } catch { return [] }
+}
+
+function addLikedId(id) {
+  const ids = getLikedIds()
+  if (!ids.includes(id)) {
+    ids.push(id)
+    localStorage.setItem(LS_LIKED_KEY, JSON.stringify(ids))
+  }
+}
+
+function removeLikedId(id) {
+  const ids = getLikedIds().filter((x) => x !== id)
+  localStorage.setItem(LS_LIKED_KEY, JSON.stringify(ids))
+}
+
+export default function DiaryCard({ diary, onDelete, onEdit, likes, comments, onLike, onUnlike, onComment, onDeleteComment }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(diary.content_text || '')
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // 评论相关状态
+  const [showComments, setShowComments] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [commentAuthor, setCommentAuthor] = useState(() => getMyName())
+  const [showNameInput, setShowNameInput] = useState(!getMyName())
+  const [localMyName, setLocalMyName] = useState(() => getMyName())
 
   const dateLabel = new Date(diary.diary_date).toLocaleDateString('zh-CN', {
     year: 'numeric', month: 'long', day: 'numeric',
@@ -14,6 +51,13 @@ export default function DiaryCard({ diary, onDelete, onEdit }) {
 
   const hasMedia = (diary.image_urls?.length > 0) || (diary.video_urls?.length > 0)
   const textPreview = diary.content_text?.slice(0, 120) || ''
+
+  const likeCount = likes?.length || 0
+  const commentCount = comments?.length || 0
+
+  // 判断当前用户是否已点赞
+  const likedIds = getLikedIds()
+  const isLikedByMe = likedIds.includes(diary.id) || (likes || []).some((l) => l.liker_name === localMyName && localMyName)
 
   useEffect(() => {
     if (!showDeleteConfirm) return
@@ -32,6 +76,47 @@ export default function DiaryCard({ diary, onDelete, onEdit }) {
   const handleDelete = async () => {
     await onDelete(diary.id)
     setShowDeleteConfirm(false)
+  }
+
+  const handleLike = async () => {
+    const name = localMyName || getMyName()
+    if (!name) {
+      setShowNameInput(true)
+      return
+    }
+    if (isLikedByMe) {
+      // 取消点赞
+      addLikedId(diary.id) // 稍后在 onUnlike 回调中移除
+      await onUnlike(diary.id, name)
+    } else {
+      addLikedId(diary.id)
+      await onLike(diary.id, name)
+    }
+  }
+
+  const handleCommentSubmit = async () => {
+    const name = commentAuthor.trim() || localMyName
+    if (!name) {
+      setShowNameInput(true)
+      return
+    }
+    if (!commentText.trim()) return
+
+    if (name !== localMyName) {
+      setLocalMyName(name)
+      setMyName(name)
+    }
+    setShowNameInput(false)
+    await onComment(diary.id, name, commentText.trim())
+    setCommentText('')
+  }
+
+  const handleSaveName = () => {
+    const name = commentAuthor.trim()
+    if (!name) return
+    setLocalMyName(name)
+    setMyName(name)
+    setShowNameInput(false)
   }
 
   return (
@@ -159,6 +244,142 @@ export default function DiaryCard({ diary, onDelete, onEdit }) {
               style={{ width: '100%', borderRadius: 8, maxHeight: 240 }}
             />
           ))}
+
+          {/* ===== 点赞 & 评论操作栏 ===== */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 16,
+            marginTop: hasMedia || diary.content_text ? 12 : 0,
+            paddingTop: 10,
+            borderTop: `1px solid var(--color-brand-subtle)`,
+          }}>
+            {/* 点赞按钮 */}
+            <button
+              onClick={handleLike}
+              aria-label={isLikedByMe ? '取消点赞' : '点赞'}
+              style={{
+                ...actionBtnStyle,
+                display: 'flex', alignItems: 'center', gap: 4,
+                color: isLikedByMe ? 'var(--color-danger)' : 'var(--color-text-secondary)',
+                opacity: 1,
+                fontSize: 13,
+              }}
+            >
+              <Heart size={18} weight={isLikedByMe ? 'fill' : 'regular'} />
+              <span>{likeCount}</span>
+            </button>
+
+            {/* 评论按钮 */}
+            <button
+              onClick={() => setShowComments(!showComments)}
+              aria-label={showComments ? '收起评论' : '查看评论'}
+              aria-expanded={showComments}
+              style={{
+                ...actionBtnStyle,
+                display: 'flex', alignItems: 'center', gap: 4,
+                opacity: 1,
+                fontSize: 13,
+              }}
+            >
+              <ChatCircle size={18} weight={showComments ? 'fill' : 'regular'} />
+              <span>{commentCount}</span>
+            </button>
+          </div>
+
+          {/* ===== 评论区 ===== */}
+          {showComments && (
+            <div style={{
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: `1px solid var(--color-brand-subtle)`,
+              animation: 'bubbleIn 0.25s ease-out',
+            }}>
+              {/* 已有评论列表 */}
+              {comments && comments.length > 0 ? (
+                <div style={{ marginBottom: 10 }}>
+                  {comments.map((c) => (
+                    <div key={c.id} style={{
+                      padding: '8px 0',
+                      borderBottom: '1px solid var(--color-brand-subtle)',
+                      position: 'relative',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-brand-emphasis)' }}>
+                          {c.author_name}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 10, color: 'var(--color-text-secondary)' }}>
+                            {new Date(c.created_at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}
+                          </span>
+                          {onDeleteComment && c.author_name === localMyName && (
+                            <button
+                              onClick={() => onDeleteComment(c.id)}
+                              aria-label="删除评论"
+                              style={{
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                padding: 0, display: 'flex', opacity: 0.5,
+                                color: 'var(--color-text-secondary)',
+                              }}
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
+                        {c.content_text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'center', padding: '8px 0', marginBottom: 8 }}>
+                  还没有评论，来说两句吧
+                </p>
+              )}
+
+              {/* 发评论表单 */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                {showNameInput ? (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 1, minWidth: 200 }}>
+                    <input
+                      className="input"
+                      value={commentAuthor}
+                      onChange={(e) => setCommentAuthor(e.target.value)}
+                      placeholder="你的名字"
+                      style={{ flex: 1, fontSize: 13, padding: '7px 10px', minHeight: 36 }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
+                    />
+                    <button className="btn-primary" onClick={handleSaveName} style={{ fontSize: 12, padding: '6px 12px' }}>
+                      确定
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 11, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
+                      {localMyName}
+                    </span>
+                    <input
+                      className="input"
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder="写评论..."
+                      style={{ flex: 1, fontSize: 13, padding: '7px 10px', minHeight: 36 }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit()}
+                    />
+                    <button
+                      className="btn-primary"
+                      onClick={handleCommentSubmit}
+                      disabled={!commentText.trim()}
+                      aria-label="发送评论"
+                      style={{ fontSize: 12, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 4 }}
+                    >
+                      <PaperPlaneTilt size={14} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
 

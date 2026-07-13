@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { Calendar, Users, BookOpen, PencilSimple, Image } from '@phosphor-icons/react'
 import MemberCard from '../components/MemberCard'
+import DiaryCard from '../components/DiaryCard'
 import FloatingParticles from '../components/FloatingParticles'
 import memberImages from '../memberImages'
 import { loadCanvasState, saveCanvasState, DEFAULT_MEMBER_SIZE, getDevice, onSharedStateChange } from '../outfitUtils'
@@ -41,6 +42,10 @@ export default function HomePage() {
   const membersRef = useRef([])
   useEffect(() => { membersRef.current = members }, [members])
 
+  // 点赞和评论数据
+  const [likesByDiary, setLikesByDiary] = useState({})
+  const [commentsByDiary, setCommentsByDiary] = useState({})
+
   const loadCanvas = () => {
     const canvas = loadCanvasState()
     const list = membersRef.current
@@ -54,6 +59,32 @@ export default function HomePage() {
       list.forEach((m) => { if (!saved[m.name]) saved[m.name] = prev[m.name] || { x: 0, y: 0 } })
       return saved
     })
+  }
+
+  const fetchAllLikesAndComments = async (diaryIds) => {
+    if (diaryIds.length === 0) return
+    const [{ data: allLikes }, { data: allComments }] = await Promise.all([
+      supabase.from('likes').select('*').in('diary_id', diaryIds),
+      supabase.from('comments').select('*').in('diary_id', diaryIds).order('created_at', { ascending: true }),
+    ])
+    const likesMap = {}
+    const commentsMap = {}
+    for (const id of diaryIds) {
+      likesMap[id] = []
+      commentsMap[id] = []
+    }
+    if (allLikes) {
+      for (const l of allLikes) {
+        if (likesMap[l.diary_id]) likesMap[l.diary_id].push(l)
+      }
+    }
+    if (allComments) {
+      for (const c of allComments) {
+        if (commentsMap[c.diary_id]) commentsMap[c.diary_id].push(c)
+      }
+    }
+    setLikesByDiary(likesMap)
+    setCommentsByDiary(commentsMap)
   }
 
   const loadInit = async () => {
@@ -86,7 +117,10 @@ export default function HomePage() {
       const { data: c } = await supabase.from('courses').select('*, classes(name)').eq('course_date', today).order('created_at', { ascending: false })
       if (c) setTodayCourses(c)
       const { data: d } = await supabase.from('diaries').select('*').order('created_at', { ascending: false }).limit(3)
-      if (d) setRecentDiaries(d)
+      if (d) {
+        setRecentDiaries(d)
+        await fetchAllLikesAndComments(d.map((x) => x.id))
+      }
     } catch {}
   }
 
@@ -159,6 +193,68 @@ export default function HomePage() {
     const grid = calcGridPositions(members, sizes)
     setPositions(grid)
     saveCanvasState({ positions: grid, sizes })
+  }
+
+  // ===== 点赞 & 评论回调 =====
+
+  const handleLike = async (diaryId, likerName) => {
+    const { error } = await supabase.from('likes').insert({
+      diary_id: diaryId,
+      liker_name: likerName,
+    })
+    if (error && error.code !== '23505') {
+      console.error('点赞失败:', error)
+      return
+    }
+    const { data } = await supabase.from('likes').select('*').eq('diary_id', diaryId)
+    setLikesByDiary((prev) => ({ ...prev, [diaryId]: data || [] }))
+  }
+
+  const handleUnlike = async (diaryId, likerName) => {
+    const { error } = await supabase
+      .from('likes')
+      .delete()
+      .eq('diary_id', diaryId)
+      .eq('liker_name', likerName)
+    if (error) {
+      console.error('取消点赞失败:', error)
+      return
+    }
+    const { data } = await supabase.from('likes').select('*').eq('diary_id', diaryId)
+    setLikesByDiary((prev) => ({ ...prev, [diaryId]: data || [] }))
+  }
+
+  const handleComment = async (diaryId, authorName, text) => {
+    const { error } = await supabase.from('comments').insert({
+      diary_id: diaryId,
+      author_name: authorName,
+      content_text: text,
+    })
+    if (error) {
+      console.error('评论失败:', error)
+      alert('评论失败，请重试')
+      return
+    }
+    const { data } = await supabase.from('comments').select('*').eq('diary_id', diaryId).order('created_at', { ascending: true })
+    setCommentsByDiary((prev) => ({ ...prev, [diaryId]: data || [] }))
+  }
+
+  const handleDeleteComment = async (commentId) => {
+    let targetDiaryId = null
+    for (const [diaryId, cmts] of Object.entries(commentsByDiary)) {
+      if (cmts.some((c) => c.id === commentId)) {
+        targetDiaryId = parseInt(diaryId)
+        break
+      }
+    }
+    if (!targetDiaryId) return
+    const { error } = await supabase.from('comments').delete().eq('id', commentId)
+    if (error) {
+      console.error('删除评论失败:', error)
+      return
+    }
+    const { data } = await supabase.from('comments').select('*').eq('diary_id', targetDiaryId).order('created_at', { ascending: true })
+    setCommentsByDiary((prev) => ({ ...prev, [targetDiaryId]: data || [] }))
   }
 
   return (
@@ -272,29 +368,24 @@ export default function HomePage() {
         </div>
       ) : (
         recentDiaries.map((d) => (
-          <div key={d.id} className="card" style={{ marginBottom: 10, cursor: 'pointer' }}
-            onClick={() => {
-              const m = members.find((m) => m.name === d.author_name && typeof m.id === 'number')
-              if (m) navigate(`/member/${m.id}`)
-              else navigate('/diary')
+          <DiaryCard
+            key={d.id}
+            diary={d}
+            likes={likesByDiary[d.id] || []}
+            comments={commentsByDiary[d.id] || []}
+            onLike={handleLike}
+            onUnlike={handleUnlike}
+            onComment={handleComment}
+            onDeleteComment={handleDeleteComment}
+            onDelete={async (id) => {
+              await supabase.from('diaries').delete().eq('id', id)
+              loadInit()
             }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const m = members.find((m) => m.name === d.author_name && typeof m.id === 'number'); if (m) navigate(`/member/${m.id}`); else navigate('/diary') } }}
-            role="button" tabIndex={0} aria-label={`${d.author_name}的日记`}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 600 }}>
-                <span style={{ color: 'var(--color-brand-primary)', marginRight: 2 }}>&#x1F338;</span> {d.author_name}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>{d.diary_date}</span>
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--color-text-primary)', lineHeight: 1.5 }}>
-              {d.content_text?.slice(0, 80)}{d.content_text?.length > 80 ? '...' : ''}
-            </p>
-            {(d.image_urls?.length > 0 || d.video_urls?.length > 0) && (
-              <span style={{ fontSize: 11, color: 'var(--color-brand-emphasis)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Image size={14} /> 含媒体内容
-              </span>
-            )}
-          </div>
+            onEdit={async (id, newText) => {
+              await supabase.from('diaries').update({ content_text: newText }).eq('id', id)
+              loadInit()
+            }}
+          />
         ))
       )}
     </div>
