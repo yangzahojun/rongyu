@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { House, Calendar, PencilSimple, MagnifyingGlass } from '@phosphor-icons/react'
+import { House, Calendar, PencilSimple, MagnifyingGlass, FolderOpen } from '@phosphor-icons/react'
 
 const tabs = [
   { path: '/', icon: House, label: '首页' },
   { path: '/schedule', icon: Calendar, label: '课程表' },
   { path: '/diary', icon: PencilSimple, label: '写日记' },
+  { path: '/media', icon: FolderOpen, label: '素材库' },
   { path: '/search', icon: MagnifyingGlass, label: '搜索' },
 ]
 

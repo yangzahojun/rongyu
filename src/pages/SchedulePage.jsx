@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
-import { Gear, CaretLeft, CaretRight, X } from '@phosphor-icons/react'
+import { Gear, CaretLeft, CaretRight, X, ChartBar } from '@phosphor-icons/react'
 import CourseModal from '../components/CourseModal'
+import ObservationModal from '../components/ObservationModal'
 
 function getWeekDates(baseDate) {
   const monday = new Date(baseDate)
@@ -27,24 +28,31 @@ function formatDateLabel(dateStr) {
 }
 
 const GRADES = ['高一', '高二', '高三']
+const TAB_TEACHING = 'teaching'
+const TAB_OBSERVATION = 'observation'
 
 export default function SchedulePage() {
   const [classes, setClasses] = useState([])
   const [courses, setCourses] = useState([])
+  const [observations, setObservations] = useState([])
+  const [stats, setStats] = useState([])
   const [weekDates, setWeekDates] = useState(() => getWeekDates(new Date()))
-  const [modalData, setModalData] = useState(null)
+  const [courseModal, setCourseModal] = useState(null)
+  const [obsModal, setObsModal] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showClassMgr, setShowClassMgr] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const [newClassName, setNewClassName] = useState('')
   const [newClassGrade, setNewClassGrade] = useState('高一')
+  const [activeTab, setActiveTab] = useState(TAB_TEACHING)
 
   useEffect(() => {
     fetchClasses()
-    fetchCourses()
+    fetchAll()
   }, [])
 
   useEffect(() => {
-    fetchCourses()
+    fetchAll()
   }, [weekDates])
 
   const fetchClasses = async () => {
@@ -52,17 +60,46 @@ export default function SchedulePage() {
     if (data) setClasses(data)
   }
 
-  const fetchCourses = async () => {
+  const fetchAll = async () => {
     setLoading(true)
     const startDate = weekDates[0]
     const endDate = weekDates[6]
-    const { data } = await supabase
-      .from('courses')
-      .select('*')
-      .gte('course_date', startDate)
-      .lte('course_date', endDate)
-    if (data) setCourses(data)
+
+    const [{ data: courseData }, { data: obsData }] = await Promise.all([
+      supabase.from('courses').select('*').gte('course_date', startDate).lte('course_date', endDate),
+      supabase.from('observations').select('*').gte('observation_date', startDate).lte('observation_date', endDate),
+    ])
+
+    if (courseData) setCourses(courseData)
+    if (obsData) setObservations(obsData)
     setLoading(false)
+
+    // 同时拉取全局统计（不依赖日期范围）
+    fetchStats()
+  }
+
+  const fetchStats = async () => {
+    const [{ data: allCourses }, { data: allObs }] = await Promise.all([
+      supabase.from('courses').select('teacher_name'),
+      supabase.from('observations').select('observer_name'),
+    ])
+
+    const teacherMap = {}
+    if (allCourses) {
+      for (const c of allCourses) {
+        if (!teacherMap[c.teacher_name]) teacherMap[c.teacher_name] = { name: c.teacher_name, teaching: 0, observing: 0 }
+        teacherMap[c.teacher_name].teaching++
+      }
+    }
+    if (allObs) {
+      for (const o of allObs) {
+        if (!teacherMap[o.observer_name]) teacherMap[o.observer_name] = { name: o.observer_name, teaching: 0, observing: 0 }
+        teacherMap[o.observer_name].observing++
+      }
+    }
+
+    const sorted = Object.values(teacherMap).sort((a, b) => (b.teaching + b.observing) - (a.teaching + a.observing))
+    setStats(sorted)
   }
 
   const addClass = async () => {
@@ -81,16 +118,31 @@ export default function SchedulePage() {
     return courses.filter((c) => c.class_id === classId && c.course_date === date)
   }
 
-  const openModal = (classData, date) => {
-    const existing = getCourses(classData.id, date)
-    setModalData({ classData, date, existingCourses: existing })
+  const getObservations = (classId, date) => {
+    return observations.filter((o) => o.class_id === classId && o.observation_date === date)
   }
 
-  const closeModal = () => setModalData(null)
+  const openCourseModal = (classData, date) => {
+    const existing = getCourses(classData.id, date)
+    setCourseModal({ classData, date, existingCourses: existing })
+  }
 
-  const handleSaved = () => {
-    fetchCourses()
-    closeModal()
+  const openObsModal = (classData, date) => {
+    const existing = getObservations(classData.id, date)
+    setObsModal({ classData, date, existingObservations: existing })
+  }
+
+  const closeCourseModal = () => setCourseModal(null)
+  const closeObsModal = () => setObsModal(null)
+
+  const handleCoursesSaved = () => {
+    fetchAll()
+    closeCourseModal()
+  }
+
+  const handleObsSaved = () => {
+    fetchAll()
+    closeObsModal()
   }
 
   const prevWeek = () => {
@@ -111,6 +163,7 @@ export default function SchedulePage() {
 
   const computedMinWidth = `${classes.length * 90 + 70}px`
 
+  // ---- 渲染 ----
   return (
     <div className="page-content">
       {/* 周导航 */}
@@ -141,6 +194,41 @@ export default function SchedulePage() {
         <button className="btn-outline" onClick={nextWeek} aria-label="下一周" style={{ padding: '6px 12px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
           下周 <CaretRight size={16} />
         </button>
+      </div>
+
+      {/* Tab 切换：授课排班 / 听课排班 */}
+      <div style={{
+        display: 'flex',
+        background: 'var(--color-surface-primary)',
+        borderRadius: 10,
+        padding: 3,
+        marginBottom: 12,
+      }}>
+        {[
+          { key: TAB_TEACHING, label: '📖 授课排班' },
+          { key: TAB_OBSERVATION, label: '👀 听课排班' },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            aria-pressed={activeTab === tab.key}
+            style={{
+              flex: 1,
+              padding: '8px 0',
+              fontSize: 14,
+              fontWeight: activeTab === tab.key ? 600 : 400,
+              color: activeTab === tab.key ? 'var(--color-brand-emphasis)' : 'var(--color-text-secondary)',
+              background: activeTab === tab.key ? 'var(--color-surface-card)' : 'transparent',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+              boxShadow: activeTab === tab.key ? 'var(--shadow-card)' : 'none',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* 班级管理按钮 */}
@@ -223,7 +311,7 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* 课程表 */}
+      {/* 排班表网格 */}
       <div style={{
         background: 'var(--color-surface-card)',
         borderRadius: 'var(--radius-md)',
@@ -257,40 +345,81 @@ export default function SchedulePage() {
                   <tr key={date}>
                     <td style={dateTdStyle}>{formatDateLabel(date)}</td>
                     {classes.map((cls) => {
-                      const cellCourses = getCourses(cls.id, date)
+                      if (activeTab === TAB_TEACHING) {
+                        const cellCourses = getCourses(cls.id, date)
+                        return (
+                          <td
+                            key={cls.id}
+                            style={{
+                              ...cellStyle,
+                              height: cellCourses.length > 2 ? 'auto' : 56,
+                            }}
+                            onClick={() => openCourseModal(cls, date)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCourseModal(cls, date) } }}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`${formatDateLabel(date)} ${cls.name} - ${cellCourses.length ? '查看课程' : '点击添加课程'}`}
+                          >
+                            {cellCourses.length === 0 ? (
+                              <span style={addHintStyle}>+</span>
+                            ) : (
+                              <div>
+                                {cellCourses.slice(0, 3).map((c) => (
+                                  <div key={c.id} style={{
+                                    fontSize: 11, fontWeight: 500,
+                                    background: 'var(--color-surface-primary)', borderRadius: 4,
+                                    padding: '1px 4px', margin: '1px 0',
+                                    lineHeight: 1.4,
+                                  }}>
+                                    {c.course_name}
+                                    <span style={{ color: 'var(--color-text-secondary)', fontWeight: 400, marginLeft: 2 }}>
+                                      {c.teacher_name}
+                                    </span>
+                                  </div>
+                                ))}
+                                {cellCourses.length > 3 && (
+                                  <div style={{ fontSize: 10, color: 'var(--color-brand-emphasis)', marginTop: 1 }}>
+                                    +{cellCourses.length - 3} 更多
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        )
+                      }
+
+                      // 听课排班 Tab
+                      const cellObs = getObservations(cls.id, date)
                       return (
                         <td
                           key={cls.id}
                           style={{
                             ...cellStyle,
-                            height: cellCourses.length > 2 ? 'auto' : 56,
+                            height: cellObs.length > 2 ? 'auto' : 56,
                           }}
-                          onClick={() => openModal(cls, date)}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openModal(cls, date) } }}
+                          onClick={() => openObsModal(cls, date)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openObsModal(cls, date) } }}
                           role="button"
                           tabIndex={0}
-                          aria-label={`${formatDateLabel(date)} ${cls.name} - ${cellCourses.length ? '查看课程' : '点击添加课程'}`}
+                          aria-label={`${formatDateLabel(date)} ${cls.name} - ${cellObs.length ? '查看听课' : '点击添加听课'}`}
                         >
-                          {cellCourses.length === 0 ? (
+                          {cellObs.length === 0 ? (
                             <span style={addHintStyle}>+</span>
                           ) : (
                             <div>
-                              {cellCourses.slice(0, 3).map((c) => (
-                                <div key={c.id} style={{
+                              {cellObs.slice(0, 3).map((o) => (
+                                <div key={o.id} style={{
                                   fontSize: 11, fontWeight: 500,
-                                  background: 'var(--color-surface-primary)', borderRadius: 4,
+                                  background: '#E8F5E9', borderRadius: 4,
                                   padding: '1px 4px', margin: '1px 0',
-                                  lineHeight: 1.4,
+                                  lineHeight: 1.4, color: '#2E7D32',
                                 }}>
-                                  {c.course_name}
-                                  <span style={{ color: 'var(--color-text-secondary)', fontWeight: 400, marginLeft: 2 }}>
-                                    {c.teacher_name}
-                                  </span>
+                                  👂 {o.observer_name}
                                 </div>
                               ))}
-                              {cellCourses.length > 3 && (
+                              {cellObs.length > 3 && (
                                 <div style={{ fontSize: 10, color: 'var(--color-brand-emphasis)', marginTop: 1 }}>
-                                  +{cellCourses.length - 3} 更多
+                                  +{cellObs.length - 3} 更多
                                 </div>
                               )}
                             </div>
@@ -306,13 +435,72 @@ export default function SchedulePage() {
         )}
       </div>
 
-      {modalData && (
+      {/* 课时统计面板 */}
+      <div style={{ marginTop: 16 }}>
+        <button
+          className="btn-outline"
+          onClick={() => setShowStats(!showStats)}
+          aria-expanded={showStats}
+          aria-label={showStats ? '收起统计' : '查看课时统计'}
+          style={{
+            width: '100%', padding: '10px 0', fontSize: 14,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}
+        >
+          <ChartBar size={18} /> {showStats ? '收起统计' : '📊 课时统计'}
+        </button>
+
+        {showStats && (
+          <div className="card" style={{ marginTop: 12 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>队员课时汇总</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--color-brand-primary)' }}>
+                    <th style={{ padding: '8px 6px', textAlign: 'left', fontSize: 12, fontWeight: 600 }}>姓名</th>
+                    <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 12, fontWeight: 600 }}>授课</th>
+                    <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 12, fontWeight: 600 }}>听课</th>
+                    <th style={{ padding: '8px 6px', textAlign: 'center', fontSize: 12, fontWeight: 600 }}>总计</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.map((s, i) => (
+                    <tr key={s.name} style={{
+                      borderBottom: '1px solid var(--color-brand-subtle)',
+                      background: i % 2 === 0 ? 'transparent' : 'var(--color-surface-primary)',
+                    }}>
+                      <td style={{ padding: '7px 6px', fontWeight: 500 }}>{s.name}</td>
+                      <td style={{ padding: '7px 6px', textAlign: 'center' }}>{s.teaching}</td>
+                      <td style={{ padding: '7px 6px', textAlign: 'center' }}>{s.observing}</td>
+                      <td style={{ padding: '7px 6px', textAlign: 'center', fontWeight: 600, color: 'var(--color-brand-emphasis)' }}>
+                        {s.teaching + s.observing}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {courseModal && (
         <CourseModal
-          classData={modalData.classData}
-          date={modalData.date}
-          existingCourses={modalData.existingCourses}
-          onClose={closeModal}
-          onSaved={handleSaved}
+          classData={courseModal.classData}
+          date={courseModal.date}
+          existingCourses={courseModal.existingCourses}
+          onClose={closeCourseModal}
+          onSaved={handleCoursesSaved}
+        />
+      )}
+
+      {obsModal && (
+        <ObservationModal
+          classData={obsModal.classData}
+          date={obsModal.date}
+          existingObservations={obsModal.existingObservations}
+          onClose={closeObsModal}
+          onSaved={handleObsSaved}
         />
       )}
     </div>

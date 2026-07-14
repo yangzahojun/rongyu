@@ -8,6 +8,7 @@ import DiaryPage from './pages/DiaryPage'
 import ShowcasePage from './pages/ShowcasePage'
 import MemberProfile from './pages/MemberProfile'
 import SearchPage from './pages/SearchPage'
+import MediaLibraryPage from './pages/MediaLibraryPage'
 import XiaoWan from './components/XiaoWan'
 import { startSync } from './outfitUtils'
 
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/showcase" element={<ErrorBoundary><ShowcasePage /></ErrorBoundary>} />
           <Route path="/member/:id" element={<ProfileGuard />} />
           <Route path="/search" element={<ErrorBoundary><SearchPage /></ErrorBoundary>} />
+          <Route path="/media" element={<ErrorBoundary><MediaLibraryPage /></ErrorBoundary>} />
         </Routes>
 
         <BottomNav />

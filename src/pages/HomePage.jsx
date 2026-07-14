@@ -31,6 +31,7 @@ export default function HomePage() {
   const [sizes, setSizes] = useState({})
   const [recentDiaries, setRecentDiaries] = useState([])
   const [todayCourses, setTodayCourses] = useState([])
+  const [todayObservations, setTodayObservations] = useState([])
   const [dragging, setDragging] = useState(null)
   const dragRef = useRef(null)
   const containerRef = useRef(null)
@@ -116,6 +117,8 @@ export default function HomePage() {
       const today = new Date().toISOString().split('T')[0]
       const { data: c } = await supabase.from('courses').select('*, classes(name)').eq('course_date', today).order('created_at', { ascending: false })
       if (c) setTodayCourses(c)
+      const { data: ob } = await supabase.from('observations').select('*, classes(name)').eq('observation_date', today).order('created_at', { ascending: false })
+      if (ob) setTodayObservations(ob)
       const { data: d } = await supabase.from('diaries').select('*').order('created_at', { ascending: false }).limit(3)
       if (d) {
         setRecentDiaries(d)
@@ -300,6 +303,31 @@ export default function HomePage() {
               <span style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>{c.classes?.name}</span>
             </div>
           ))
+        )}
+
+        {todayObservations.length > 0 && (
+          <>
+            <div style={{
+              borderTop: '1px dashed var(--color-brand-subtle)',
+              margin: '10px 0',
+              position: 'relative',
+            }}>
+              <span style={{
+                position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)',
+                background: 'var(--color-surface-card)', padding: '0 8px', fontSize: 11, color: 'var(--color-text-secondary)',
+              }}>
+                👀 今日听课
+              </span>
+            </div>
+            <div style={{ marginTop: 6 }}>
+              {todayObservations.map((o) => (
+                <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--color-brand-subtle)', fontSize: 13 }}>
+                  <span style={{ fontWeight: 500, color: '#2E7D32' }}>👂 {o.observer_name} 听课</span>
+                  <span style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>{o.classes?.name}</span>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
